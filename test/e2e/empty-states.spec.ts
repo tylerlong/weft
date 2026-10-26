@@ -25,13 +25,13 @@ test("project reads distinguish loading and failure before empty home guidance",
 	await expect(home.getByRole("button", { name: "Retry" })).toBeVisible();
 	await expect(home.getByText(/Create a project using/)).toHaveCount(0);
 	if (process.env.CAPTURE_EMPTY_STATES)
-		await page.screenshot({ path: "/tmp/tyler-agent-81-project-error.png" });
+		await page.screenshot({ path: "/tmp/weft-81-project-error.png" });
 	fail = false;
 	await home.getByRole("button", { name: "Retry" }).click();
 	await expect(home.getByText(/Create a project using/)).toBeVisible();
 	await expect(home.getByRole("button", { name: "New chat" })).toHaveCount(0);
 	if (process.env.CAPTURE_EMPTY_STATES)
-		await page.screenshot({ path: "/tmp/tyler-agent-81-new-database.png" });
+		await page.screenshot({ path: "/tmp/weft-81-new-database.png" });
 });
 
 test("empty Project creation identifies owner, preserves cancellation and archive rules", async ({
@@ -63,7 +63,7 @@ test("empty Project creation identifies owner, preserves cancellation and archiv
 		project.getByRole("button", { name: "New chat", exact: true }),
 	).toHaveCount(2);
 	if (process.env.CAPTURE_EMPTY_STATES)
-		await page.screenshot({ path: "/tmp/tyler-agent-81-expanded-empty.png" });
+		await page.screenshot({ path: "/tmp/weft-81-expanded-empty.png" });
 	await project.getByRole("button", { name: /^Collapse/ }).click();
 	await expect(
 		project.getByRole("button", { name: "New chat", exact: true }),
@@ -87,7 +87,7 @@ test("empty Project creation identifies owner, preserves cancellation and archiv
 		page.getByText("Ask your first question below to begin this chat."),
 	).toBeVisible();
 	if (process.env.CAPTURE_EMPTY_STATES)
-		await page.screenshot({ path: "/tmp/tyler-agent-81-empty-chat.png" });
+		await page.screenshot({ path: "/tmp/weft-81-empty-chat.png" });
 	await project.getByRole("button", { name: /^Collapse/ }).click();
 	await expect(
 		project.getByRole("button", { name: "Draft", exact: true }),
@@ -103,7 +103,7 @@ test("empty Project creation identifies owner, preserves cancellation and archiv
 	).toHaveCount(0);
 	await page.setViewportSize({ width: 1600, height: 1000 });
 	if (process.env.CAPTURE_EMPTY_STATES)
-		await page.screenshot({ path: "/tmp/tyler-agent-81-archived-home.png" });
+		await page.screenshot({ path: "/tmp/weft-81-archived-home.png" });
 });
 
 test("history loading and failure are distinct from empty history and invalid IDs return home", async ({
@@ -140,7 +140,7 @@ test("history loading and failure are distinct from empty history and invalid ID
 	await expect(home.getByRole("button", { name: "Retry" })).toBeVisible();
 	await expect(page.getByText(/Ask your first question/)).toHaveCount(0);
 	if (process.env.CAPTURE_EMPTY_STATES)
-		await page.screenshot({ path: "/tmp/tyler-agent-81-history-error.png" });
+		await page.screenshot({ path: "/tmp/weft-81-history-error.png" });
 	fail = false;
 	await home.getByRole("button", { name: "Retry" }).click();
 	await expect(page.getByText(/Ask your first question/)).toBeVisible();
@@ -182,5 +182,5 @@ test("home and empty history guidance follow the saved Chinese language", async 
 		page.getByText("在下方输入第一个问题，开始此对话。"),
 	).toBeVisible();
 	if (process.env.CAPTURE_EMPTY_STATES)
-		await page.screenshot({ path: "/tmp/tyler-agent-81-chinese-empty.png" });
+		await page.screenshot({ path: "/tmp/weft-81-chinese-empty.png" });
 });

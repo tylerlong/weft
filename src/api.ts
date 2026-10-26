@@ -1,5 +1,5 @@
 // Only the startup URL can establish management authority in this browser tab.
-const managementKey = "tyler-management-token";
+const managementKey = "weft-management-token";
 if (typeof window !== "undefined") {
 	const url = new URL(window.location.href);
 	const fragment = new URLSearchParams(url.hash.slice(1));
@@ -30,7 +30,7 @@ export function managementHeaders(): Record<string, string> {
 		typeof window === "undefined"
 			? null
 			: sessionStorage.getItem(managementKey);
-	return token ? { "x-tyler-management-token": token } : {};
+	return token ? { "x-weft-management-token": token } : {};
 }
 export async function apiFetch(path: string, init?: RequestInit) {
 	if (

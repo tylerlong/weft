@@ -70,11 +70,11 @@ Each new root task and sub-agent loads user instructions from the service user's
 
 The initial UTF-8 text budget is 32 KiB, shared in user-first, saved-folder and ancestor-first order. Actual model requests show source paths, scopes, truncated content, omissions and read errors. Running agents keep their initial contents; new agents reload. The model must discover and read deeper local instructions before working on files, and decide how to handle unavailable rules. References such as README, CONTEXT and ADRs are read only when needed.
 
-Initial instruction discovery follows its named sources and reports read errors; ordinary tool reads, commands and writes use Full Access and the global review switch. Commands inherit the service user’s normal `HOME`, `PATH` and development environment; Weft prepends its bundled command tools and removes `TYLER_MANAGEMENT_TOKEN`. Commands can read that account’s configuration and credentials; Full Access provides no isolation. Agent scratch still supplies temporary directories and the browser CLI cache. The exec-server process keeps its separate minimal environment and HOME.
+Initial instruction discovery follows its named sources and reports read errors; ordinary tool reads, commands and writes use Full Access and the global review switch. Commands inherit the service user’s normal `HOME`, `PATH` and development environment; Weft prepends its bundled command tools and removes `WEFT_MANAGEMENT_TOKEN`. Commands can read that account’s configuration and credentials; Full Access provides no isolation. Agent scratch still supplies temporary directories and the browser CLI cache. The exec-server process keeps its separate minimal environment and HOME.
 
 ## Local data
 
-`data/tyler-agent.sqlite` stores history, settings, and your **unencrypted API key**. Keep it private. To use another database, run `pnpm start --db /absolute/path/to/chat.sqlite`; its parent directory must already exist and be private to your user (for example, permissions `0700`).
+`data/weft.sqlite` stores history, settings, and your **unencrypted API key**. Keep it private. To use another database, run `pnpm start --db /absolute/path/to/chat.sqlite`; its parent directory must already exist and be private to your user (for example, permissions `0700`).
 
 Unsupported databases are rejected without deletion or automatic migration. If an update requires a new database, use a fresh path and keep the old database for its records.
 

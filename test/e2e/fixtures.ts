@@ -67,7 +67,7 @@ export const test = base.extend<{
 							...options,
 							headers: {
 								Origin: new URL(url).origin,
-								"x-tyler-management-token":
+								"x-weft-management-token":
 									managementTokens.get(new URL(url).origin) ?? "",
 								...options.headers,
 							},
@@ -175,7 +175,7 @@ export const test = base.extend<{
 			context.addInitScript(
 				({ url, token }) => {
 					if (location.origin === url && token)
-						sessionStorage.setItem("tyler-management-token", token);
+						sessionStorage.setItem("weft-management-token", token);
 				},
 				{ url, token: managementTokens.get(url) },
 			);

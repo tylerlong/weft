@@ -122,7 +122,7 @@ for (const initialPath of ["file", "dangling alias", "dangling chain"] as const)
 		) => {
 			const response = await fetch(service.base + route, {
 				headers: {
-					"x-tyler-management-token": service.token,
+					"x-weft-management-token": service.token,
 					origin: service.base,
 				},
 				...(body === undefined

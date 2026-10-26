@@ -1812,7 +1812,7 @@ commandTest(
 				PATH: `${bin}:${savedEnvironment.PATH}`,
 				XDG_CONFIG_HOME: join(home, ".config"),
 				FIXTURE_DEVELOPMENT_ENV: "fixture-development",
-				TYLER_MANAGEMENT_TOKEN: "fake-management-token",
+				WEFT_MANAGEMENT_TOKEN: "fake-management-token",
 			});
 			await writeFile(
 				join(root, "environment.cjs"),
@@ -1822,9 +1822,9 @@ const { execFileSync } = require('node:child_process');
 const run = (file, args=[]) => execFileSync(file, args, {encoding:'utf8'}).trim();
 assert.equal(process.env.HOME, ${JSON.stringify(home)});
 assert.equal(process.env.FIXTURE_DEVELOPMENT_ENV, 'fixture-development');
-assert.equal(process.env.TYLER_MANAGEMENT_TOKEN, undefined);
+assert.equal(process.env.WEFT_MANAGEMENT_TOKEN, undefined);
 assert.equal(process.env.CODEX_HOME, ${JSON.stringify(process.env.CODEX_HOME)});
-assert.match(process.env.TMPDIR, /tyler-agent/);
+assert.match(process.env.TMPDIR, /weft/);
 assert.equal(run('fixture-tool'), 'fixture-path-tool');
 assert.equal(run('git', ['config', '--global', 'user.name']), 'Fixture User');
 assert.equal(run('npm', ['config', 'get', 'user-agent']), 'fixture-npm-agent');

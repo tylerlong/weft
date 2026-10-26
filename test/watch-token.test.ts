@@ -35,7 +35,7 @@ test("development watch retains authorization after restart and a new launch rot
 			serverPath,
 			`${await readFile(serverPath, "utf8")}\nif (import.meta.main) {
  const { spawnSync } = await import("node:child_process");
- const result = spawnSync(process.execPath, ["-e", 'process.stdout.write(String("TYLER_MANAGEMENT_TOKEN" in process.env))']);
+ const result = spawnSync(process.execPath, ["-e", 'process.stdout.write(String("WEFT_MANAGEMENT_TOKEN" in process.env))']);
  if (result.stdout.toString() !== "false") throw new Error("Management token leaked to child environment");
  console.log("Child environment cleared");
 }\n`,
@@ -82,7 +82,7 @@ test("development watch retains authorization after restart and a new launch rot
 			};
 			try {
 				const token = await waitForToken(1);
-				const headers = { "x-tyler-management-token": token };
+				const headers = { "x-weft-management-token": token };
 				assert.equal(
 					(await fetch(`${base}/api/projects`, { headers })).status,
 					200,
@@ -104,7 +104,7 @@ test("development watch retains authorization after restart and a new launch rot
 					assert.equal(
 						(
 							await fetch(`${base}/api/projects`, {
-								headers: { "x-tyler-management-token": previous },
+								headers: { "x-weft-management-token": previous },
 							})
 						).status,
 						403,
@@ -121,9 +121,9 @@ test("development watch retains authorization after restart and a new launch rot
 });
 
 test("direct server instances generate independent tokens without consuming watch environment", async () => {
-	const previous = process.env.TYLER_MANAGEMENT_TOKEN;
+	const previous = process.env.WEFT_MANAGEMENT_TOKEN;
 	const supplied = "a".repeat(64);
-	process.env.TYLER_MANAGEMENT_TOKEN = supplied;
+	process.env.WEFT_MANAGEMENT_TOKEN = supplied;
 	const servers = [
 		createApplicationServer(fetch, ":memory:"),
 		createApplicationServer(fetch, ":memory:"),
@@ -135,8 +135,8 @@ test("direct server instances generate independent tokens without consuming watc
 			assert.notEqual(server.managementToken, supplied);
 		}
 	} finally {
-		if (previous === undefined) delete process.env.TYLER_MANAGEMENT_TOKEN;
-		else process.env.TYLER_MANAGEMENT_TOKEN = previous;
+		if (previous === undefined) delete process.env.WEFT_MANAGEMENT_TOKEN;
+		else process.env.WEFT_MANAGEMENT_TOKEN = previous;
 		await Promise.all(
 			servers.map(
 				(server) => new Promise<void>((done) => server.close(() => done())),
@@ -154,13 +154,13 @@ test("CLI rejects invalid supplied tokens before creating a database", async () 
 				process.execPath,
 				["src/server.ts", "--db", path],
 				{
-					env: { ...process.env, TYLER_MANAGEMENT_TOKEN: token },
+					env: { ...process.env, WEFT_MANAGEMENT_TOKEN: token },
 					encoding: "utf8",
 					timeout: 5000,
 				},
 			);
 			assert.equal(result.status, 1);
-			assert.match(result.stderr, /Invalid TYLER_MANAGEMENT_TOKEN/);
+			assert.match(result.stderr, /Invalid WEFT_MANAGEMENT_TOKEN/);
 		}
 		await assert.rejects(readFile(path), { code: "ENOENT" });
 	} finally {
@@ -173,12 +173,12 @@ test("command tools never inherit the watch management token", {
 }, async () => {
 	const directory = await mkdtemp(join(tmpdir(), "agent-tool-token-"));
 	const executor = new CommandExecutor();
-	const previous = process.env.TYLER_MANAGEMENT_TOKEN;
-	process.env.TYLER_MANAGEMENT_TOKEN = "synthetic-management-token";
+	const previous = process.env.WEFT_MANAGEMENT_TOKEN;
+	process.env.WEFT_MANAGEMENT_TOKEN = "synthetic-management-token";
 	try {
 		let output = "";
 		const result = await executor.execute({
-			command: 'test -z "$TYLER_MANAGEMENT_TOKEN" && printf clean',
+			command: 'test -z "$WEFT_MANAGEMENT_TOKEN" && printf clean',
 			cwd: directory,
 			agentId: `token-${process.pid}`,
 			timeoutMs: 5000,
@@ -190,8 +190,8 @@ test("command tools never inherit the watch management token", {
 		assert.equal(result.exitCode, 0);
 		assert.equal(output, "clean");
 	} finally {
-		if (previous === undefined) delete process.env.TYLER_MANAGEMENT_TOKEN;
-		else process.env.TYLER_MANAGEMENT_TOKEN = previous;
+		if (previous === undefined) delete process.env.WEFT_MANAGEMENT_TOKEN;
+		else process.env.WEFT_MANAGEMENT_TOKEN = previous;
 		await executor.close();
 		await rm(directory, { recursive: true, force: true });
 	}

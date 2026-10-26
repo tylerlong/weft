@@ -74,7 +74,7 @@ test("startup fragment authorizes every browser API and expired tokens retain Se
 		if (new URL(req.url()).pathname.startsWith("/api/"))
 			observed.push({
 				url: req.url(),
-				token: req.headers()["x-tyler-management-token"],
+				token: req.headers()["x-weft-management-token"],
 			});
 	});
 	try {
@@ -85,7 +85,7 @@ test("startup fragment authorizes every browser API and expired tokens retain Se
 		await expect.poll(() => new URL(page.url()).hash).toBe("");
 		expect(
 			await page.evaluate(() =>
-				sessionStorage.getItem("tyler-management-token"),
+				sessionStorage.getItem("weft-management-token"),
 			),
 		).toBe(token);
 		await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -95,7 +95,7 @@ test("startup fragment authorizes every browser API and expired tokens retain Se
 		await expect(key).toHaveValue("zkey");
 		await key.fill("unsaved-draft");
 		await page.evaluate(() =>
-			sessionStorage.setItem("tyler-management-token", "f".repeat(64)),
+			sessionStorage.setItem("weft-management-token", "f".repeat(64)),
 		);
 		await key.blur();
 		await expect(
@@ -168,7 +168,7 @@ test("expired authorization remains actionable in lazy communication records", a
 	await page.getByRole("button", { name: /^Send(?: \(.+\))?$/ }).click();
 	await expect(page.getByText("Test answer", { exact: true })).toBeVisible();
 	await page.evaluate(() =>
-		sessionStorage.setItem("tyler-management-token", "f".repeat(64)),
+		sessionStorage.setItem("weft-management-token", "f".repeat(64)),
 	);
 	const response = page
 		.locator("details")

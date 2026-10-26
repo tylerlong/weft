@@ -1,6 +1,6 @@
 # 面向模型的文本读取与完整行分页
 
-`read_file` 按完整行分页读取文本，成功结果不重复携带 base64。本决定定义 Weft 自己的模型工具契约，底层继续复用 Codex exec-server 的文件 RPC，不把字节传输协议直接当作模型阅读接口。实现与验证结果见 [#184](https://github.com/tylerlong/tyler-agent/issues/184)。
+`read_file` 按完整行分页读取文本，成功结果不重复携带 base64。本决定定义 Weft 自己的模型工具契约，底层继续复用 Codex exec-server 的文件 RPC，不把字节传输协议直接当作模型阅读接口。实现与验证结果见 [#184](https://github.com/tylerlong/weft/issues/184)。
 
 采用的契约：
 

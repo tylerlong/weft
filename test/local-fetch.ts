@@ -13,9 +13,9 @@ export const localFetch: typeof fetch = (input, init) => {
 		!headers.has("Origin")
 	)
 		headers.set("Origin", url.origin);
-	if (!headers.has("x-tyler-management-token")) {
+	if (!headers.has("x-weft-management-token")) {
 		const token = managementTokens.get(url.origin);
-		if (token) headers.set("x-tyler-management-token", token);
+		if (token) headers.set("x-weft-management-token", token);
 	}
 	return globalThis.fetch(input, { ...init, headers });
 };

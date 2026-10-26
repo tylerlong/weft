@@ -73,12 +73,12 @@ test("compact composer grows and shrinks with drafts, bounds scrolling and guard
 	await page.getByRole("button", { name: "Composer", exact: true }).click();
 	await expect(prompt).toHaveValue("Long draft line\n".repeat(30));
 	expect((await prompt.boundingBox())?.height).toBe(bounded);
-	await page.screenshot({ path: "/tmp/tyler-agent-66-composer.png" });
+	await page.screenshot({ path: "/tmp/weft-66-composer.png" });
 	await page.setViewportSize({ width: 1280, height: 720 });
 	await expect(prompt).toBeInViewport();
 	await expect(send).toBeInViewport();
 	expect(await page.evaluate(() => window.scrollY)).toBe(0);
-	await page.screenshot({ path: "/tmp/tyler-agent-66-composer-small.png" });
+	await page.screenshot({ path: "/tmp/weft-66-composer-small.png" });
 	await prompt.fill("short draft");
 	expect((await prompt.boundingBox())?.height).toBe(initial);
 	for (const viewport of [
@@ -105,7 +105,7 @@ test("compact composer grows and shrinks with drafts, bounds scrolling and guard
 			expect(await prompt.boundingBox()).toEqual(emptyInput);
 			expect(await send.boundingBox()).toEqual(emptySend);
 			await page.screenshot({
-				path: `/tmp/tyler-agent-86-${viewport.width}-${width}.png`,
+				path: `/tmp/weft-86-${viewport.width}-${width}.png`,
 			});
 		}
 	}

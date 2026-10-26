@@ -12,7 +12,7 @@ unmodified upstream skill and references appear through the existing skill
 catalog. Targets need no browser-tool installation.
 Use the installed browser executables and independent task profiles rather than personal browser profiles. Commands inherit the normal user HOME, PATH and development environment, with
 Weft’s CLI wrapper, Node and ripgrep paths prepended and
-`TYLER_MANAGEMENT_TOKEN` removed. Agent scratch supplies `TMPDIR`, `TMP`, `TEMP`
+`WEFT_MANAGEMENT_TOKEN` removed. Agent scratch supplies `TMPDIR`, `TMP`, `TEMP`
 and `XDG_CACHE_HOME` (`scratch/cache`). Only the `playwright-cli` wrapper sets
 `HOME` to scratch, keeping CLI daemon state, temporary profiles and sockets
 independent of personal browser profiles; the macOS CLI registry does not use

@@ -60,7 +60,7 @@ test("local Host and exact Origin protect all mutations and bodyless cancellatio
 				{
 					method,
 					headers: {
-						"x-tyler-management-token": server.managementToken,
+						"x-weft-management-token": server.managementToken,
 						...headers,
 						...(body === undefined
 							? {}
@@ -304,7 +304,7 @@ test("every API method and event stream requires the startup management token", 
 						method,
 						headers: {
 							Origin: base,
-							...(token ? { "x-tyler-management-token": token } : {}),
+							...(token ? { "x-weft-management-token": token } : {}),
 						},
 					});
 					assert.equal(response.status, 403, `${method} ${path}`);
@@ -321,7 +321,7 @@ test("every API method and event stream requires the startup management token", 
 				method,
 				headers: {
 					Origin: base,
-					"x-tyler-management-token": server.managementToken,
+					"x-weft-management-token": server.managementToken,
 				},
 				...(method === "POST"
 					? { body: JSON.stringify({ name: "safe", folders: [] }) }
@@ -330,7 +330,7 @@ test("every API method and event stream requires the startup management token", 
 			assert.notEqual(response.status, 403);
 		}
 		const events = await fetch(base + "/api/events", {
-			headers: { "x-tyler-management-token": server.managementToken },
+			headers: { "x-weft-management-token": server.managementToken },
 		});
 		assert.equal(events.status, 200);
 		await events.body?.cancel();
@@ -362,7 +362,7 @@ test("JSON bodies decode split UTF-8 and accept large valid requests", async () 
 					method: "POST",
 					headers: {
 						Origin: base,
-						"x-tyler-management-token": server.managementToken,
+						"x-weft-management-token": server.managementToken,
 					},
 				},
 				(res) => {
@@ -398,7 +398,7 @@ test("JSON bodies decode split UTF-8 and accept large valid requests", async () 
 		}
 		const projects = await (
 			await fetch(base + "/api/projects", {
-				headers: { "x-tyler-management-token": server.managementToken },
+				headers: { "x-weft-management-token": server.managementToken },
 			})
 		).json();
 		assert.deepEqual(
@@ -441,7 +441,7 @@ test("MCP settings save and read back configurations above the former request ca
 	const base = `http://127.0.0.1:${address.port}`;
 	const headers = {
 		Origin: base,
-		"x-tyler-management-token": server.managementToken,
+		"x-weft-management-token": server.managementToken,
 	};
 	const services = [
 		{

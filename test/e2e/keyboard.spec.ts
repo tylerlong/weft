@@ -340,7 +340,7 @@ test("an older delayed Enter preference read cannot replace the confirmed newer 
 	await expect(choice).toHaveValue("newline");
 	await page.setViewportSize({ width: 1280, height: 720 });
 	await expect(choice).toBeInViewport();
-	await page.screenshot({ path: "/tmp/tyler-agent-87-settings-1280.png" });
+	await page.screenshot({ path: "/tmp/weft-87-settings-1280.png" });
 	await page.setViewportSize({ width: 1600, height: 1000 });
-	await page.screenshot({ path: "/tmp/tyler-agent-87-settings-1600.png" });
+	await page.screenshot({ path: "/tmp/weft-87-settings-1600.png" });
 });

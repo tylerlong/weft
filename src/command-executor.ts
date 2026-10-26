@@ -82,10 +82,10 @@ type Running = {
 
 export function agentScratch(agentId: string) {
 	if (!/^[a-zA-Z0-9_-]+$/.test(agentId)) throw new Error("Invalid Agent ID");
-	const scratch = join("/tmp/tyler-agent", agentId);
+	const scratch = join("/tmp/weft", agentId);
 	mkdirSync(scratch, { recursive: true, mode: 0o700 });
 	const actual = realpathSync(scratch);
-	if (actual !== join(realpathSync("/tmp"), "tyler-agent", agentId))
+	if (actual !== join(realpathSync("/tmp"), "weft", agentId))
 		throw new Error("Agent scratch must not be a symbolic link");
 	return actual;
 }
@@ -157,7 +157,7 @@ export class CommandExecutor {
 			`${triple}-apple-darwin`,
 			"codex-path",
 		);
-		const home = await realpath(await mkdtemp("/tmp/tyler-agent-executor-"));
+		const home = await realpath(await mkdtemp("/tmp/weft-executor-"));
 		const bin = join(home, "bin");
 		await mkdir(bin);
 		const quote = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
@@ -250,7 +250,7 @@ export class CommandExecutor {
 				this.fail(`Command executor protocol/output failure: ${String(error)}`);
 			}
 		});
-		await this.rpc("initialize", { clientName: "tyler-agent" });
+		await this.rpc("initialize", { clientName: "weft" });
 		server.stdin.write(
 			`${JSON.stringify({ method: "initialized", params: {} })}\n`,
 		);
@@ -411,7 +411,7 @@ export class CommandExecutor {
 			this.processes.set(processId, proc);
 			if (interactive) this.sessions.set(sessionId, processId);
 			const environment = { ...process.env };
-			delete environment.TYLER_MANAGEMENT_TOKEN;
+			delete environment.WEFT_MANAGEMENT_TOKEN;
 			await this.rpc("process/start", {
 				processId,
 				argv:

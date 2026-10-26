@@ -86,7 +86,7 @@ test("Queue stays outside Agent history until success advances FIFO, with duplic
 					method: "POST",
 					headers: {
 						origin: base,
-						"x-tyler-management-token": server.managementToken,
+						"x-weft-management-token": server.managementToken,
 					},
 				},
 				(response) => {

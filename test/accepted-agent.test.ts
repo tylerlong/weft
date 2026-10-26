@@ -19,7 +19,7 @@ test("HTTP submission acknowledges its durable pending agent before the held mod
 	const server = createTestServer(async (_url, init) => {
 		calls++;
 		assert.equal(
-			new Headers(init?.headers).has("x-tyler-management-token"),
+			new Headers(init?.headers).has("x-weft-management-token"),
 			false,
 		);
 		assert(!String(init?.body).includes(server.managementToken));

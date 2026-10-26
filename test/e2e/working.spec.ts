@@ -57,7 +57,7 @@ for (const layout of [
 		await expect(status).toHaveCSS("width", "16px");
 		await expect(status).toHaveCSS("animation-name", "spin");
 		await page.screenshot({
-			path: `/tmp/tyler-agent88-${layout.width}-${layout.sidebar}.png`,
+			path: `/tmp/weft88-${layout.width}-${layout.sidebar}.png`,
 		});
 		await page.emulateMedia({ reducedMotion: "reduce" });
 		await expect(status).toHaveCSS("animation-name", "none");

@@ -274,7 +274,7 @@ test("combined picker remains bounded with a long enabled list and exposes Reaso
 			);
 			expect(await prompt.boundingBox()).toEqual(before);
 			await page.screenshot({
-				path: `/tmp/tyler-agent-85-picker-${size.width}-${width}.png`,
+				path: `/tmp/weft-85-picker-${size.width}-${width}.png`,
 			});
 			await page.keyboard.press("Escape");
 		}

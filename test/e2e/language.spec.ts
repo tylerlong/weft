@@ -390,7 +390,7 @@ test("language changes keep stored content, edit and question drafts, raw failur
 		"Work 原名",
 	);
 	await edit.getByRole("button", { name: "Cancel", exact: true }).click();
-	await page.screenshot({ path: "/tmp/tyler-agent-50-en.png" });
+	await page.screenshot({ path: "/tmp/weft-50-en.png" });
 	await page.request.put(`${app.url}/api/language`, {
 		data: { language: "zh-CN" },
 	});
@@ -398,13 +398,13 @@ test("language changes keep stored content, edit and question drafts, raw failur
 	await expect(page.getByRole("combobox", { name: "界面语言" })).toHaveValue(
 		"zh-CN",
 	);
-	await page.screenshot({ path: "/tmp/tyler-agent-50-zh-settings.png" });
+	await page.screenshot({ path: "/tmp/weft-50-zh-settings.png" });
 	await page
 		.getByRole("dialog", { name: "设置", exact: true })
 		.getByRole("button", { name: "关闭", exact: true })
 		.click();
 	await page.getByRole("button", { name: "项目操作", exact: true }).click();
-	await page.screenshot({ path: "/tmp/tyler-agent-50-zh-menu.png" });
+	await page.screenshot({ path: "/tmp/weft-50-zh-menu.png" });
 });
 
 test("a successful creation uses the language at completion for the next fresh draft", async ({

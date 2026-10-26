@@ -90,7 +90,7 @@ test("model and effort choices save immediately while busy and persist across re
 	await page.reload();
 	await expectModel(page, "second");
 	await expect(chatPicker(page)).not.toContainText(" · ");
-	await page.screenshot({ path: "/tmp/tyler-agent-67-composer.png" });
+	await page.screenshot({ path: "/tmp/weft-67-composer.png" });
 	await selectModel(page, "second");
 	await selectModel(page, "test");
 	await expectEffort(page, "");

@@ -65,7 +65,7 @@ const outputSummary = (output: OutputItem[]) =>
 	}));
 
 const defaultDatabasePath = fileURLToPath(
-	new URL("../data/tyler-agent.sqlite", import.meta.url),
+	new URL("../data/weft.sqlite", import.meta.url),
 );
 const errorMessages: Record<string, string> = {
 	steerTargetChanged:
@@ -1779,7 +1779,7 @@ export function createServer(
 		}
 		const path = url.pathname;
 		if (path.startsWith("/api/")) {
-			const token = request.headers["x-tyler-management-token"];
+			const token = request.headers["x-weft-management-token"];
 			if (
 				typeof token !== "string" ||
 				!/^[a-f0-9]{64}$/.test(token) ||
@@ -2951,10 +2951,10 @@ export function createServer(
 	return Object.assign(server, { managementToken });
 }
 if (import.meta.main) {
-	const managementToken = process.env.TYLER_MANAGEMENT_TOKEN;
-	delete process.env.TYLER_MANAGEMENT_TOKEN;
+	const managementToken = process.env.WEFT_MANAGEMENT_TOKEN;
+	delete process.env.WEFT_MANAGEMENT_TOKEN;
 	if (managementToken !== undefined && !/^[a-f0-9]{64}$/.test(managementToken))
-		throw new Error("Invalid TYLER_MANAGEMENT_TOKEN");
+		throw new Error("Invalid WEFT_MANAGEMENT_TOKEN");
 	const { values } = parseArgs({
 		args: process.argv.slice(2),
 		options: { db: { type: "string" }, port: { type: "string" } },

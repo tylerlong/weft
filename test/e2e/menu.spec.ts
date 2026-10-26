@@ -140,7 +140,7 @@ test("lightweight controls and menus have hover feedback and fit at the viewport
 	).toBeLessThan(2);
 	expect(bounds.y - anchor.y - anchor.height).toBeGreaterThanOrEqual(0);
 	expect(bounds.y - anchor.y - anchor.height).toBeLessThan(10);
-	await page.screenshot({ path: "/tmp/tyler-agent-46-menu.png" });
+	await page.screenshot({ path: "/tmp/weft-46-menu.png" });
 	// Put a real trigger near the bottom using a long Archived project list.
 	for (let i = 0; i < 30; i++)
 		await page.request.post(`${app.url}/api/projects/${p.id}/chats`, {
@@ -176,7 +176,7 @@ test("lightweight controls and menus have hover feedback and fit at the viewport
 	expect(menu.y).toBeGreaterThanOrEqual(0);
 	expect(menu.x).toBeGreaterThanOrEqual(0);
 	expect(menu.x + menu.width).toBeLessThanOrEqual(1280);
-	await page.screenshot({ path: "/tmp/tyler-agent-46-archived-menu.png" });
+	await page.screenshot({ path: "/tmp/weft-46-archived-menu.png" });
 	await page.getByRole("heading", { name: "Weft", exact: true }).click();
 	await archived
 		.getByRole("button", { name: "Project actions", exact: true })

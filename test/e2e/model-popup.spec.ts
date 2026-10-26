@@ -34,9 +34,9 @@ for (const size of [
 		const list = dialog.getByRole("listbox", { name: "Popular models" });
 		async function capture(state: string) {
 			if (!process.env.MODEL_POPUP_SCREENSHOTS) return;
-			await mkdir("/tmp/tyler-agent-80-evidence", { recursive: true });
+			await mkdir("/tmp/weft-80-evidence", { recursive: true });
 			await page.screenshot({
-				path: `/tmp/tyler-agent-80-evidence/${state}-${size.width}-${size.height}.png`,
+				path: `/tmp/weft-80-evidence/${state}-${size.width}-${size.height}.png`,
 			});
 		}
 		await expect(dialog.getByRole("status")).toHaveCount(0);
@@ -205,9 +205,9 @@ test("addition loading and initial failure stay local with Chinese search and no
 	expect(await dialog.boundingBox()).toEqual(loadingBounds);
 	async function capture(state: string) {
 		if (!process.env.MODEL_POPUP_SCREENSHOTS) return;
-		await mkdir("/tmp/tyler-agent-80-evidence", { recursive: true });
+		await mkdir("/tmp/weft-80-evidence", { recursive: true });
 		await page.screenshot({
-			path: `/tmp/tyler-agent-80-evidence/${state}-zh-1280-720.png`,
+			path: `/tmp/weft-80-evidence/${state}-zh-1280-720.png`,
 		});
 	}
 	const search = dialog.getByRole("combobox", { name: "按名称或 ID 搜索模型" });

@@ -98,9 +98,9 @@ for (const chinese of [false, true]) {
 		).toBe(modelsBox.y);
 		expect(writes).toBe(1);
 		if (process.env.SETTINGS_SCREENSHOTS) {
-			await mkdir("/tmp/tyler-agent-122-evidence", { recursive: true });
+			await mkdir("/tmp/weft-122-evidence", { recursive: true });
 			await page.screenshot({
-				path: `/tmp/tyler-agent-122-evidence/credential-saved-${chinese ? "zh" : "en"}.png`,
+				path: `/tmp/weft-122-evidence/credential-saved-${chinese ? "zh" : "en"}.png`,
 			});
 		}
 		const failure = async (route: import("@playwright/test").Route) => {
@@ -117,7 +117,7 @@ for (const chinese of [false, true]) {
 		await expect(key).toHaveValue("failed-secret");
 		if (process.env.SETTINGS_SCREENSHOTS)
 			await page.screenshot({
-				path: `/tmp/tyler-agent-122-evidence/credential-failure-${chinese ? "zh" : "en"}.png`,
+				path: `/tmp/weft-122-evidence/credential-failure-${chinese ? "zh" : "en"}.png`,
 			});
 		await page.unroute("**/api/model-settings", failure);
 		await key.fill("");
@@ -176,9 +176,9 @@ for (const chinese of [false, true]) {
 				await dialog.getByRole("tab", { name: tab, exact: true }).click();
 				expect(await dialog.boundingBox()).toEqual(bounds);
 				if (process.env.SETTINGS_SCREENSHOTS) {
-					await mkdir("/tmp/tyler-agent-121-evidence", { recursive: true });
+					await mkdir("/tmp/weft-121-evidence", { recursive: true });
 					await page.screenshot({
-						path: `/tmp/tyler-agent-121-evidence/${chinese ? "zh" : "en"}-${tab}-${size.width}.png`,
+						path: `/tmp/weft-121-evidence/${chinese ? "zh" : "en"}-${tab}-${size.width}.png`,
 					});
 				}
 			}
@@ -200,10 +200,10 @@ for (const chinese of [false, true]) {
 				),
 			).toBe(true);
 			if (process.env.SETTINGS_SCREENSHOTS)
-				await mkdir("/tmp/tyler-agent-79-evidence", { recursive: true });
+				await mkdir("/tmp/weft-79-evidence", { recursive: true });
 			if (process.env.SETTINGS_SCREENSHOTS)
 				await page.screenshot({
-					path: `/tmp/tyler-agent-79-evidence/settings-${chinese ? "zh" : "en"}-${size.width}.png`,
+					path: `/tmp/weft-79-evidence/settings-${chinese ? "zh" : "en"}-${size.width}.png`,
 				});
 		}
 	});
@@ -311,9 +311,9 @@ test("tabs retain failed credential drafts and Close deliberately retries on the
 	expect(writes).toBe(2);
 	expect(discoveries).toBe(1);
 	if (process.env.SETTINGS_SCREENSHOTS) {
-		await mkdir("/tmp/tyler-agent-122-evidence", { recursive: true });
+		await mkdir("/tmp/weft-122-evidence", { recursive: true });
 		await page.screenshot({
-			path: "/tmp/tyler-agent-122-evidence/credential-failure-en.png",
+			path: "/tmp/weft-122-evidence/credential-failure-en.png",
 		});
 	}
 	await page.unroute("**/api/model-settings");
