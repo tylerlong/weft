@@ -12,6 +12,13 @@ test("failed personal connection records actual target without binding the Chat"
 	skip: process.platform !== "darwin",
 }, async () => {
 	const directory = await mkdtemp(join(tmpdir(), "browser-target-"));
+	const previousRoot = process.env.PLAYWRIGHT_MCP_USER_DATA_DIR;
+	const previousGlobal = process.env.PWTEST_CLI_GLOBAL_CONFIG;
+	process.env.PLAYWRIGHT_MCP_USER_DATA_DIR = join(
+		directory,
+		"conflicting-root",
+	);
+	process.env.PWTEST_CLI_GLOBAL_CONFIG = directory;
 	let calls = 0;
 	let connectedTarget: unknown;
 	let output = "";
@@ -68,6 +75,7 @@ test("failed personal connection records actual target without binding the Chat"
 				profile: "Default",
 			});
 			assert.match(output, /Playwright Extension not found/);
+
 			assert.match(body.instructions, /Chat personal browser target: null/);
 			return completedResponse({
 				output: [
@@ -109,11 +117,21 @@ test("failed personal connection records actual target without binding the Chat"
 		const agent = await waitForAgent(base, agentId);
 
 		assert.equal(agent.status, "succeeded");
+		assert(
+			output.includes(`"${join(directory, "Default")}"`),
+			"actual upstream lookup must use the recorded target root",
+		);
 		assert.equal((await request(`/api/chats/${chat.id}`)).browserTarget, null);
 		assert(calls >= 2);
 	} finally {
 		server.closeAllConnections();
 		await new Promise<void>((resolve) => server.close(() => resolve()));
+		if (previousRoot === undefined)
+			delete process.env.PLAYWRIGHT_MCP_USER_DATA_DIR;
+		else process.env.PLAYWRIGHT_MCP_USER_DATA_DIR = previousRoot;
+		if (previousGlobal === undefined)
+			delete process.env.PWTEST_CLI_GLOBAL_CONFIG;
+		else process.env.PWTEST_CLI_GLOBAL_CONFIG = previousGlobal;
 		await rm(directory, { recursive: true, force: true });
 	}
 });
@@ -122,6 +140,8 @@ test("upstream recent-profile discovery changes only an unbound target", async (
 	const { personalBrowserCommand } = await import("../src/browser-tools.ts");
 	const { mkdir, writeFile } = await import("node:fs/promises");
 	const root = await mkdtemp(join(tmpdir(), "target-discovery-"));
+	const previousGlobal = process.env.PWTEST_CLI_GLOBAL_CONFIG;
+	process.env.PWTEST_CLI_GLOBAL_CONFIG = root;
 	try {
 		for (const profile of ["Default", "Profile 2"])
 			await mkdir(
@@ -169,6 +189,9 @@ test("upstream recent-profile discovery changes only an unbound target", async (
 			"Default",
 		);
 	} finally {
+		if (previousGlobal === undefined)
+			delete process.env.PWTEST_CLI_GLOBAL_CONFIG;
+		else process.env.PWTEST_CLI_GLOBAL_CONFIG = previousGlobal;
 		await rm(root, { recursive: true, force: true });
 	}
 });
@@ -187,4 +210,35 @@ test("custom executable cannot be mislabeled as a tracked channel target", async
 			delete process.env.PLAYWRIGHT_MCP_EXECUTABLE_PATH;
 		else process.env.PLAYWRIGHT_MCP_EXECUTABLE_PATH = original;
 	}
+});
+
+test("an old relative saved root is rejected rather than rebound in a new Agent cwd", async () => {
+	const { personalBrowserCommand } = await import("../src/browser-tools.ts");
+	await assert.rejects(
+		personalBrowserCommand(
+			{},
+			{
+				channel: "chrome",
+				userDataDir: "relative-old-root",
+				profile: "Default",
+			},
+			tmpdir(),
+		),
+		/relative; explicitly select an absolute target/,
+	);
+});
+
+test("cancelled tracked config resolution reports interruption", async () => {
+	const { personalBrowserCommand } = await import("../src/browser-tools.ts");
+	const controller = new AbortController();
+	controller.abort();
+	await assert.rejects(
+		personalBrowserCommand(
+			{ channel: "chrome", user_data_dir: tmpdir(), profile: "Default" },
+			null,
+			tmpdir(),
+			controller.signal,
+		),
+		{ name: "AbortError" },
+	);
 });

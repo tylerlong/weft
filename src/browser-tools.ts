@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -41,6 +41,7 @@ export async function personalBrowserCommand(
 	value: Record<string, unknown>,
 	current: BrowserTarget | null,
 	scratch: string,
+	signal?: AbortSignal,
 ) {
 	if (
 		Object.keys(value).some(
@@ -86,13 +87,59 @@ export async function personalBrowserCommand(
 		throw new Error(
 			"Personal target requires an installed Chrome or Edge channel",
 		);
-	const userDataDir =
+	const requestedRoot =
 		value.user_data_dir ??
-		(current?.channel === channel ? current.userDataDir : undefined) ??
+		(current?.channel === channel ? current.userDataDir : undefined);
+	if (
+		requestedRoot !== undefined &&
+		typeof requestedRoot === "string" &&
+		!isAbsolute(requestedRoot)
+	)
+		throw new Error(
+			"Saved browser profile directory is relative; explicitly select an absolute target",
+		);
+	const env = { ...process.env };
+	delete env.WEFT_MANAGEMENT_TOKEN;
+	// Resolve in the command's cwd using the pinned upstream merge, without printing config values.
+	const { stdout } = await promisify(execFile)(
+		process.execPath,
+		[
+			"-e",
+			`
+const {tools}=require(process.argv[1]+"/lib/coreBundle.js");
+tools.resolveCLIConfigForCLI(process.argv[2],"weft-personal",JSON.parse(process.argv[3]))
+ .then(config=>{
+  const browser=config.browser;
+  const incompatible=!!(browser.cdpEndpoint || browser.remoteEndpoint || browser.isolated || browser.launchOptions.executablePath);
+  process.stdout.write(JSON.stringify({incompatible,userDataDir:browser.userDataDir}));
+ }).catch(()=>process.stdout.write(JSON.stringify({error:true})));
+ `,
+			playwrightCoreRoot,
+			scratch,
+			JSON.stringify({
+				extension: true,
+				browser: channel,
+				...(requestedRoot === undefined ? {} : { profile: requestedRoot }),
+			}),
+		],
+		{ cwd: scratch, env, signal, timeout: 5000, maxBuffer: 8192 },
+	);
+	const inherited = JSON.parse(stdout);
+	if (inherited.error)
+		throw new Error(
+			"Cannot resolve inherited browser configuration for tracked targets",
+		);
+	if (inherited.incompatible)
+		throw new Error(
+			"Tracked target has incompatible inherited browser configuration (CDP, remote, isolated or custom executable); use the raw CLI",
+		);
+	const inheritedRoot =
+		inherited.userDataDir ??
 		process.env.PWTEST_EXTENSION_USER_DATA_DIR ??
 		utils.defaultUserDataDirForChannel(channel);
-	if (typeof userDataDir !== "string")
+	if (typeof inheritedRoot !== "string")
 		throw new Error("Browser profile directory is unavailable");
+	const userDataDir = resolve(scratch, inheritedRoot);
 	const profile =
 		value.profile ??
 		(current?.channel === channel && current.userDataDir === userDataDir
@@ -108,13 +155,23 @@ export async function personalBrowserCommand(
 	const config = join(scratch, `personal-browser-${randomUUID()}.json`);
 	await writeFile(
 		config,
-		JSON.stringify({ browser: { userDataDir }, outputMode: "stdout" }),
+		JSON.stringify({
+			browser: {
+				userDataDir,
+				isolated: false,
+				cdpEndpoint: "",
+				remoteEndpoint: "",
+				launchOptions: { executablePath: "" },
+			},
+			extension: true,
+			outputMode: "stdout",
+		}),
 		{ mode: 0o600 },
 	);
 	const quote = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
 	return {
 		target,
-		command: `PLAYWRIGHT_MCP_PROFILE_DIR_NAME=${quote(profile)} playwright-cli -s=weft-personal attach --extension=${quote(channel)} --config=${quote(config)}`,
+		command: `PLAYWRIGHT_MCP_USER_DATA_DIR=${quote(userDataDir)} PLAYWRIGHT_MCP_PROFILE_DIR_NAME=${quote(profile)} PLAYWRIGHT_MCP_CDP_ENDPOINT= PLAYWRIGHT_MCP_ISOLATED=false PLAYWRIGHT_MCP_EXECUTABLE_PATH= playwright-cli -s=weft-personal attach --extension=${quote(channel)} --config=${quote(config)}`,
 	};
 }
 

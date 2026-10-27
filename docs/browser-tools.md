@@ -43,6 +43,14 @@ To reuse an existing personal login with a stable Chat target, call
 `profile` (the upstream directory name), and `user_data_dir` (an explicit upstream
 user-data root). Omitted values reuse this Chat's saved target; the first call
 uses the upstream host channel/profile defaults and official extension discovery.
+Before connecting, the tracked path resolves configuration with the pinned CLI's
+own merge rules in that Agent's scratch directory. Initial user-data roots from
+environment or global CLI config are honored; relative roots become absolute in
+that cwd before being saved. An older saved relative root is rejected instead of
+being rebound against a new Agent cwd; replacing it requires explicit selection
+of an absolute target. The extension's channel selection follows upstream
+CLI/environment behavior (its extension launcher does not use a global launch
+channel). Explicit arguments and an existing Chat target take precedence.
 Only an actual successful attach saves `{channel, userDataDir, profile}` on the
 Chat. An installation record or pending authorization does not bind it.
 
@@ -70,7 +78,13 @@ The raw CLI remains available for all upstream parameters, custom executable,
 persistent-profile and CDP operations. Raw CLI attachment is lower-level and does
 not update the tracked Chat target. `browser_connect` requires a standard channel
 installation and rejects an inherited `PLAYWRIGHT_MCP_EXECUTABLE_PATH` override
-rather than mislabel a custom executable as that channel's installed browser. For example, single-Agent extension use is:
+rather than mislabel a custom executable as that channel's installed browser.
+Inherited CDP/remote endpoints, isolated mode and custom launch executables are
+also rejected before another browser is contacted. These errors report the
+incompatibility without printing endpoint or credential values. The generated
+extension command pins root/profile and disables alternate transport selection
+for that command, including if inherited config changes after resolution; raw
+CLI calls retain all original environment/config behavior. For example, single-Agent extension use is:
 
 
 ```sh
@@ -416,3 +430,25 @@ judgment, arbitrary website compatibility, SMS, fingerprint or passkey flows.
 Marketplace installation and real-person authentication are not simulated as
 successful extension acceptance. Shared Cookies, same-origin storage and account
 server state remain shared even when page ownership is separate.
+
+### Tracked configuration regression (#188 correction)
+
+`test/browser-target-config.test.ts` exercises HTTP → model fixture → actual
+native CLI for explicit roots conflicting with inherited environment and for
+initial environment/global roots. Incompatible CDP/environment, global CDP,
+global remote, isolated and custom-executable settings are rejected without
+contacting a controlled alternate endpoint or exposing its synthetic secret.
+A native command regression changes inherited config after preparing a saved
+target and confirms that the CLI still looks up exactly that target, without
+contacting the alternate endpoint. These tests need no personal profile or
+installed extension. The opt-in normal extension check in the same file uses
+`WEFT_TEST_EXTENSION_CHANNEL` and selects only its designated localhost page.
+
+On 2026-10-27, the correction's new normal-path smoke passed against the real
+installed Chrome extension after the Mac was unlocked (21.6 s). It checked the
+actual localhost Page URL, saved target/command state, and heading in the CLI's
+owned snapshot artifact; Agent cleanup detached the connection and only the test
+tab was closed. The first run exposed a test assumption that snapshots were
+inline; the harness was corrected to inspect the retained file, and the clean
+rerun passed. This short check does not repeat the earlier full Chrome/Edge
+matrix, website login/handoff, or cancellation acceptance.

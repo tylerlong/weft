@@ -1131,6 +1131,7 @@ export function createServer(
 									value,
 									previousTarget,
 									scratch,
+									signal,
 								);
 								await reviewOperation(value, {
 									browserTarget: connection.target,
