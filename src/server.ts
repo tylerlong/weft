@@ -119,6 +119,7 @@ const errorMessages: Record<string, string> = {
 	modelImageUnsupported: "Selected model does not support image input",
 	chatBusy: "The chat is processing a request",
 	answerWriteFailed: "Could not save the answer",
+	toolCleanupFailed: "Tool cleanup failed; inspect the saved command state",
 	toolWriteFailed: "Could not save the Tool Call or Tool Result",
 	chatCreateFailed: "Could not create chat",
 	notFound: "Not found",
@@ -232,6 +233,7 @@ export function createServer(
 		throw error;
 	}
 	let finishShutdown!: () => void;
+	let shutdownFailure: Error | undefined;
 	const shutdown = new Promise<void>((resolve) => {
 		finishShutdown = resolve;
 	});
@@ -1659,7 +1661,16 @@ export function createServer(
 		state.stopped = true;
 		await commands.closeAgent(scratchId(agentId)).catch((error) => {
 			cleanupFailures.add(agentId);
-			failure ??= error;
+			const diagnostic = JSON.parse(redactTool(JSON.stringify(String(error))));
+			database
+				.prepare(
+					"UPDATE tool_calls SET command_state=json_set(COALESCE(command_state,'{}'),'$.cleanupError',?) WHERE id=(SELECT tool_calls.id FROM tool_calls JOIN model_calls ON model_calls.id=tool_calls.model_call_id WHERE model_calls.agent_id=? AND tool_calls.name IN ('exec_command','browser_connect','apply_patch') ORDER BY tool_calls.id DESC LIMIT 1)",
+				)
+				.run(diagnostic, agentId);
+			failure ??= new ModelError(
+				"toolCleanupFailed",
+				errorMessages.toolCleanupFailed,
+			);
 		});
 		if (closed) return;
 		while (children(agentId).some((child) => running.has(Number(child.id)))) {
@@ -3002,6 +3013,10 @@ export function createServer(
 		}
 		void Promise.all(agents.map((agent) => agent.done))
 			.then(() => commands.close())
+			.catch(() => {
+				shutdownFailure = new Error(errorMessages.toolCleanupFailed);
+				console.error(shutdownFailure.message);
+			})
 			.finally(() => {
 				try {
 					database.close();
@@ -3017,7 +3032,7 @@ export function createServer(
 		close(
 			callback
 				? (error) => {
-						void shutdown.then(() => callback(error));
+						void shutdown.then(() => callback(error ?? shutdownFailure));
 					}
 				: undefined,
 		);

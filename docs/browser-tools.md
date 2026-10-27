@@ -124,7 +124,11 @@ Agent completion, Stop, Steer and service shutdown stop registered CLI sessions
 from that Agent's scratch registry through the pinned upstream `Session.stop`.
 This releases an attached personal connection while retaining its pages and
 profile; temporary browsers owned by those sessions close normally. Cleanup is
-bounded to 10 seconds, uses no global `kill-all`, and reports errors. The pinned
+bounded to 10 seconds and uses no global `kill-all`. A failed cleanup is
+saved as a redacted `cleanupError` in the most recent command state; a
+non-cancelled Agent reports `toolCleanupFailed`, while a cancelled Agent keeps
+its cancellation status. Shutdown reports cleanup failure to its close callback
+and still releases database ownership. The pinned
 registry/session interfaces must be revalidated when Playwright is upgraded.
 
 While a structured `browser_connect` is still waiting for approval, its daemon

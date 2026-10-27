@@ -32,6 +32,8 @@ export const resources = {
 			toolSaveFailed:
 				"Tool record could not be saved. Execution stopped; no automatic retry.",
 			toolExecutionStopped: "Tool execution stopped unexpectedly.",
+			toolCleanupFailed:
+				"Tool cleanup failed. Inspect the saved command state.",
 			toolWriteFailed: "Could not save tool execution. No automatic retry.",
 			toolArguments: "Arguments",
 			toolResult: "Result",
@@ -361,6 +363,7 @@ export const resources = {
 			toolRestartInterrupted: "服务重启前工具尚未完成。",
 			toolSaveFailed: "工具记录保存失败，执行已停止，不会自动重试。",
 			toolExecutionStopped: "工具执行意外停止。",
+			toolCleanupFailed: "工具清理失败，请检查已保存的命令状态。",
 			toolWriteFailed: "无法保存工具执行，不会自动重试。",
 			toolArguments: "参数",
 			toolResult: "结果",
