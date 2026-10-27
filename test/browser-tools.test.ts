@@ -84,10 +84,11 @@ test("native commands can read outside their cwd and launch, operate and close t
 		signal: new AbortController().signal,
 		timeoutMs: 15000,
 	};
-	const execute = async (command: string) => {
+	const execute = async (command: string, agentId = options.agentId) => {
 		let output = "";
 		const result = await executor.execute({
 			...options,
+			agentId,
 			command,
 			onOutput: (_stream, text) => {
 				output += text;
@@ -104,6 +105,10 @@ test("native commands can read outside their cwd and launch, operate and close t
 			await execute(
 				`playwright-cli open http://127.0.0.1:${address.port} --browser=chromium`,
 			),
+		);
+		assert.doesNotMatch(
+			await execute("playwright-cli list", `${options.agentId}-other`),
+			/status: open/,
 		);
 		assert.match(
 			await execute(

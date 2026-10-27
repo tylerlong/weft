@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 export const playwrightRoot = dirname(
@@ -16,3 +17,6 @@ export const browserSkill = join(
 // Fixed Playwright's own registry supplies platform revisions and cache paths.
 const { registry } = require(join(playwrightCoreRoot, "lib/coreBundle.js"));
 export const browserCacheDirectory: string = registry.registryDirectory;
+export const browserGuide = fileURLToPath(
+	new URL("../docs/browser-tools.md", import.meta.url),
+);

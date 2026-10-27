@@ -107,6 +107,7 @@ const server = createServer((req, res) => {
 			if (result?.error) assert.fail(JSON.stringify(result));
 			if (
 				step !== 16 &&
+				step !== 18 &&
 				result?.exitCode !== undefined &&
 				result?.running !== true
 			)
@@ -232,6 +233,27 @@ const server = createServer((req, res) => {
 					assert(Array.isArray(result));
 					assert.match(JSON.stringify(result), /HTTP result/);
 					assert.match(JSON.stringify(result), /browser complete/);
+					args = command(`${cli} attach --extension=msedge`);
+					break;
+				case 19:
+					assert.equal(result.exitCode, 1, text);
+					assert.match(text, /Playwright Extension not found/);
+					assert(
+						text.includes(
+							join(
+								directory,
+								"user-home",
+								"Library",
+								"Application Support",
+								"Microsoft Edge",
+							),
+						),
+						text,
+					);
+					assert.match(
+						text,
+						/https:\/\/chromewebstore\.google\.com\/detail\/playwright-extension\/mmlmfjhmonkocbjadbfplnigmagldckm/,
+					);
 					assert.match(body.instructions, /PROJECT-BROWSER-INTEGRATION/);
 					assert.match(body.instructions, /EXPLICIT-BROWSER-INTEGRATION/);
 					return completedResponse({
@@ -282,7 +304,7 @@ const server = createServer((req, res) => {
 	try {
 		await request(
 			"/api/execution-limits",
-			{ modelCallLimit: 18 + 17 + 2 * maxReadinessPolls },
+			{ modelCallLimit: 19 + 18 + 2 * maxReadinessPolls },
 			"PATCH",
 		);
 		await request(
@@ -315,14 +337,14 @@ const server = createServer((req, res) => {
 		});
 		const agent = await waitForAgent(base, agentId);
 		assert.equal(agent.status, "succeeded", JSON.stringify(agent));
-		assert.equal(step, 18);
+		assert.equal(step, 19);
 		await crashes.assertNoCrashes();
 		assert.deepEqual(agent.images, [userImage]);
 		assert(mcp.requests.some((request) => request.method === "DELETE"));
 		assert.equal(mcp.streams.size, 0);
 		assert.equal(screenshots.length, 1);
 		const tools = (await request(`/api/agents/${agentId}/tools`)).toolCalls;
-		assert.equal(tools.length, 17);
+		assert.equal(tools.length, 18);
 		const image = tools.find(
 			(tool: { name: string }) => tool.name === "read_image",
 		);
@@ -362,7 +384,8 @@ const server = createServer((req, res) => {
 				{
 					cwd: target,
 					env: {
-						HOME: scratch,
+						HOME: process.env.HOME,
+						PWTEST_DAEMON_SESSION_DIR: join(scratch, "playwright-daemon"),
 						TMPDIR: scratch,
 						PLAYWRIGHT_BROWSERS_PATH: browserCacheDirectory,
 					},

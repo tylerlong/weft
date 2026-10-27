@@ -10,13 +10,15 @@ The command environment provides `playwright-cli` as a transparent executable
 alias for the installed `playwright cli`, forwarding every argument. The
 unmodified upstream skill and references appear through the existing skill
 catalog. Targets need no browser-tool installation.
-Use the installed browser executables and independent task profiles rather than personal browser profiles. Commands inherit the normal user HOME, PATH and development environment, with
+Commands, including the CLI, inherit the normal user HOME, PATH and development environment, with
 Weft’s CLI wrapper, Node and ripgrep paths prepended and
 `WEFT_MANAGEMENT_TOKEN` removed. Agent scratch supplies `TMPDIR`, `TMP`, `TEMP`
-and `XDG_CACHE_HOME` (`scratch/cache`). Only the `playwright-cli` wrapper sets
-`HOME` to scratch, keeping CLI daemon state, temporary profiles and sockets
-independent of personal browser profiles; the macOS CLI registry does not use
-`XDG_CACHE_HOME`. Installed browser
+and `XDG_CACHE_HOME` (`scratch/cache`). The `playwright-cli` wrapper sets
+`PWTEST_DAEMON_SESSION_DIR` to `scratch/playwright-daemon`, keeping CLI registry,
+daemon sessions and sockets per Agent while host HOME remains available for
+personal profile discovery. This is the only registry-directory override in the
+pinned 1.63.0 implementation; its internal name must be rechecked on upgrades.
+The macOS registry does not use `XDG_CACHE_HOME`. Installed browser
 binaries remain available through `PLAYWRIGHT_BROWSERS_PATH`. This is Full Access:
 commands can read the account’s configuration and credentials. The exec-server
 process retains its own minimal environment and separate HOME.
@@ -26,6 +28,59 @@ Install browser binaries from the Weft directory with
 own browser choice, not to Weft's configuration. The model must choose when to start a server, navigate, inspect diagnostics,
 read a screenshot with `read_image`, and close the browser. No readiness policy
 or browser action filter is added.
+
+## Choosing a browser operation
+
+Read the unmodified official `playwright-cli` skill for the complete interface.
+Use `playwright-cli open <url> --browser=chromium` for an independent temporary
+browser without an extension or website login. Upstream `--persistent`,
+`--profile`, CDP attachment and diagnostic operations remain available; Weft
+forwards every argument. The model chooses an operation according to the task,
+not a local public/private website classifier.
+
+To reuse an existing personal login, use the official extension:
+
+```sh
+playwright-cli -s=personal attach --extension=msedge
+# Or select Chrome explicitly:
+playwright-cli -s=personal attach --extension=chrome
+playwright-cli -s=personal run-code 'async page => ({url: page.url(), title: await page.title()})'
+playwright-cli -s=personal detach
+```
+
+Upstream selects the initial profile, opens its connection page through the
+normal browser executable and requests authorization. Do not launch another
+automation browser against a running personal user-data directory or copy
+Cookies. Use a distinct session name and keep passing it on later commands.
+Choose only a task-relevant tab explicitly handed over by the user; unrelated
+user pages are not implicit permission to take control. An authorized connection
+is separate from website authentication: inspect actual page content when the
+task needs a login. An unauthenticated website is not a broken browser connection
+and is not a reason to search other profiles or change accounts.
+
+If upstream reports the extension missing, retain its actual error and profile
+location. In that same Chrome or Edge profile, open the
+[official Playwright Extension store page](https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm),
+choose **Add to Chrome** / **Get**, confirm adding it and keep it enabled. In Edge,
+if prompted, first allow extensions from other stores. Retry the same connection
+after installation. Do not automatically install the extension. An installation
+record does not prove that the extension is enabled, a connection authorized, or
+the website logged in. A pending authorization is not proof of a missing
+extension; report uncertain connection failures as uncertain.
+
+The normal upstream authorization page is sufficient; an extension token is not
+a prerequisite. Do not copy or print its token or expose Cookies in diagnostics.
+While authorization is pending, use normal yielding command sessions and Stop /
+Steer rather than an unbounded background poll. When done, detach the personal
+connection; do not close the whole user browser, clear its profile or sign out.
+Close only pages owned by this task. Independently created temporary browsers
+still use `close` as documented upstream.
+
+This initial delivery (#187 of [#186](https://github.com/tylerlong/weft/issues/186))
+connects a single Agent. Stable Chat targets, subsequent Root/Sub-agent
+inheritance, complete manual handoff and concurrent cancellation/page ownership
+acceptance are subsequent tickets; they are not established by successful login
+reuse. Shared browser Cookies and website account state are not isolated by tabs.
 
 ## Execution and validation
 
@@ -55,8 +110,40 @@ Upstream detached CLI daemons can outlive a command and have their normal idle
 timeout. The model must close browsers it owns; Weft does not add a Chat lifetime
 policy or automatic personal-browser attachment. Browser artifacts use the
 chosen cwd and normal file permissions, so save wanted screenshots and trace
-files in a Target Folder. No paid model call or personal browser takeover was
-used; protocol evidence does not prove that a paid model interpreted the image.
+files in a Target Folder. No paid model calls were used; protocol evidence does
+not prove that a paid model interpreted the image or chose the right operation.
+
+### Real extension acceptance (2026-10-26)
+
+Playwright CLI 1.63.0 with official extension 0.4.0 connected to Edge
+156.0.4314.42 (Default) and Chrome 156.0.8078.48 (Profile 2) on macOS. The
+operator completed the ordinary extension picker using only the designated
+test tab. No extension token was configured. Edge also read the already logged-in
+private `tylerlong/sanguosha` repository: the actual page contained the Private
+marker and repository file table. That read-only check detached without closing
+the existing repository tab or browser; it did not modify the repository or
+request another login.
+
+`test/browser-extension.test.ts` is an explicit opt-in real-browser acceptance:
+
+```sh
+WEFT_TEST_EXTENSION_CHANNEL=chrome node --test test/browser-extension.test.ts
+WEFT_TEST_EXTENSION_CHANNEL=msedge node --test test/browser-extension.test.ts
+```
+
+It prints an ephemeral localhost URL. Open it in a new tab of the selected
+profile, click **Test login**, then select only that tab in the extension picker
+(refresh the picker if the new tab is not listed). HTTP -> controlled model
+fixture -> actual command wrapper/CLI/extension navigates the authenticated page,
+reads protected content, records Tool Result and Command Output, closes only the
+test page, and detaches. It uses an independent temporary database/directory and
+a unique test Cookie. It does not inspect personal Cookies or authenticate a
+real account. Both browser paths were exercised; this opt-in test is skipped in
+unattended CI. The regular HTTP diagnostics test also verifies actual missing
+extension output against a fake host HOME and retains the official store link;
+the native browser test checks that another Agent cannot list the first Agent's
+CLI session. These checks do not establish concurrent extension page ownership,
+manual SMS/system verification, target inheritance, or service-restart recovery.
 
 ## Primary sources
 

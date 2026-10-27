@@ -161,9 +161,10 @@ export class CommandExecutor {
 		const bin = join(home, "bin");
 		await mkdir(bin);
 		const quote = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
+		// Fixed 1.63.0 exposes only this registry override; HOME must retain host profile discovery.
 		await writeFile(
 			join(bin, "playwright-cli"),
-			`#!/bin/sh\nHOME="$TMPDIR" exec ${quote(process.execPath)} ${quote(join(playwrightRoot, "cli.js"))} cli "$@"\n`,
+			`#!/bin/sh\nPWTEST_DAEMON_SESSION_DIR="$TMPDIR/playwright-daemon" exec ${quote(process.execPath)} ${quote(join(playwrightRoot, "cli.js"))} cli "$@"\n`,
 			{ mode: 0o755 },
 		);
 		this.commandPath = `${bin}:${dirname(process.execPath)}:${rgFolder}`;

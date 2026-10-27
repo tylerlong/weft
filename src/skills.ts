@@ -2,7 +2,7 @@ import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { parse } from "yaml";
-import { browserSkill } from "./browser-tools.ts";
+import { browserGuide, browserSkill } from "./browser-tools.ts";
 
 export type Skill = {
 	name: string;
@@ -146,6 +146,7 @@ export async function skillInstructions(
 ) {
 	const sections = [
 		"Skills are reusable task guidance. Choose relevant implicit skills from this catalog and read the complete SKILL.md before using them. Read referenced resources as needed; execute scripts with the normal command tools. New sub-agents discover their own catalog; pass task guidance explicitly in prompt/context.",
+		`For browser tasks, read the bundled official playwright-cli skill and Weft integration guidance at ${browserGuide}. Choose temporary browsing or personal-browser attachment as the task requires; an extension and website login are not prerequisites for every task.`,
 		`Available implicit skills (name, description, exact source): ${JSON.stringify(discovery.skills.filter((skill) => skill.implicit).map(({ name, description, source }) => ({ name, description, source })))}`,
 	];
 	if (discovery.diagnostics.length)
