@@ -68,3 +68,52 @@ setInterval(()=>{},1000);
 			await rm(directory, { recursive: true, force: true });
 		}
 	});
+
+test("Agent cleanup marks a cooperative zero-exit startup interrupted", {
+	skip: process.platform !== "darwin",
+	timeout: 10000,
+}, async () => {
+	const directory = await realpath(
+		await mkdtemp(join(tmpdir(), "startup-finish-")),
+	);
+	const executor = new CommandExecutor();
+	let state:
+		| { exitCode: number | null; cancelled?: boolean; running?: boolean }
+		| undefined;
+	let started!: () => void;
+	const ready = new Promise<void>((resolve) => {
+		started = resolve;
+	});
+	try {
+		await writeFile(
+			join(directory, "startup.cjs"),
+			'process.on("SIGINT",()=>process.exit(0));console.log("pending");setInterval(()=>{},1000);',
+		);
+		const result = await executor.execute({
+			command: "exec node startup.cjs",
+			cwd: directory,
+			agentId: `finish-${process.pid}`,
+			interruptBeforeTerminate: true,
+			yieldTimeMs: 250,
+			signal: new AbortController().signal,
+			onOutput: (_stream, text) => {
+				if (text.includes("pending")) started();
+			},
+			onState: (result) => {
+				state = result;
+			},
+		});
+		assert.equal(result.running, true);
+		await ready;
+		await executor.closeAgent(`finish-${process.pid}`);
+		assert.equal(state?.exitCode, 0);
+		assert.equal(
+			state?.cancelled,
+			true,
+			"A cleanup interrupt must not look like a successful browser attach",
+		);
+	} finally {
+		await executor.close();
+		await rm(directory, { recursive: true, force: true });
+	}
+});

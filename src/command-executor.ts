@@ -622,6 +622,7 @@ export class CommandExecutor {
 		await Promise.all(
 			owned.map(async ([processId, proc]) => {
 				if (!proc.closed) {
+					proc.cancelled = true;
 					try {
 						await proc.stop();
 					} catch (error) {
