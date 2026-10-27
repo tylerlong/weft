@@ -349,6 +349,15 @@ The existing read-only Edge private-repository check is recorded above. #189's
 complete login/cancellation scenarios were run in Chrome; the final compatibility
 matrix above separately records Edge. No SMS, fingerprint, passkey or paid-model decision
 quality was tested. Website-specific expiry and automation restrictions remain.
+Website authentication mechanisms belong to the human and the website, outside
+Weft acceptance. These controlled fixtures verify browser-state continuity after
+human action; the untested methods above are not unfinished Weft features.
+
+[Follow-up specification #194](https://github.com/tylerlong/weft/issues/194)
+retains the first controlled handoff, unfinished-page retention
+and premature-continue checks, and removes the separate expiry/re-login repetition.
+Connection-approval cancellation remains distinct lifecycle coverage. The current
+five-Root test and historical results below have not yet been rewritten.
 
 
 ### Final compatibility acceptance (#191, 2026-10-27)
