@@ -7,7 +7,11 @@ import { dirname, isAbsolute, join } from "node:path";
 import { createInterface } from "node:readline";
 import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
-import { browserCacheDirectory, playwrightRoot } from "./browser-tools.ts";
+import {
+	browserCacheDirectory,
+	closeBrowserSessions,
+	playwrightRoot,
+} from "./browser-tools.ts";
 import { imageFromBytes, MAX_IMAGE_BYTES } from "./image-content.ts";
 import { readTextPage } from "./text-file.ts";
 
@@ -108,6 +112,7 @@ export class CommandExecutor {
 	private processes = new Map<string, Running>();
 	private sessions = new Map<number, string>();
 	private nextSession = 1;
+	private agents = new Set<string>();
 
 	private fail(message: string, disconnected = false) {
 		this.failure ??= message;
@@ -353,6 +358,7 @@ export class CommandExecutor {
 			this.initialized ??= this.initialize();
 			await this.initialized;
 			const scratch = agentScratch(options.agentId);
+			this.agents.add(options.agentId);
 			options.signal.throwIfAborted();
 			let complete!: () => void;
 			const completed = new Promise<void>((resolve) => {
@@ -605,17 +611,24 @@ export class CommandExecutor {
 		);
 		for (const [sessionId, processId] of this.sessions)
 			if (!this.processes.has(processId)) this.sessions.delete(sessionId);
+		await closeBrowserSessions(agentScratch(agentId));
+		this.agents.delete(agentId);
 	}
 
 	async close() {
 		this.closing = true;
 		await this.initialized?.catch(() => {});
 		const server = this.server;
-		if (!server || server.exitCode !== null || server.signalCode !== null)
-			return;
-		await new Promise<void>((resolve) => {
-			server.once("close", resolve);
-			this.stopServer();
-		});
+		if (server && server.exitCode === null && server.signalCode === null)
+			await new Promise<void>((resolve) => {
+				server.once("close", resolve);
+				this.stopServer();
+			});
+		await Promise.all(
+			[...this.agents].map(async (id) => {
+				await closeBrowserSessions(agentScratch(id));
+				this.agents.delete(id);
+			}),
+		);
 	}
 }

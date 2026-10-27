@@ -1,8 +1,11 @@
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 const require = createRequire(import.meta.url);
 export const playwrightRoot = dirname(
@@ -113,4 +116,32 @@ export async function personalBrowserCommand(
 		target,
 		command: `PLAYWRIGHT_MCP_PROFILE_DIR_NAME=${quote(profile)} playwright-cli -s=weft-personal attach --extension=${quote(channel)} --config=${quote(config)}`,
 	};
+}
+
+export async function closeBrowserSessions(scratch: string) {
+	const directory = join(scratch, "playwright-daemon");
+	if (!existsSync(directory)) return;
+	const env: NodeJS.ProcessEnv = {
+		...process.env,
+		PWTEST_DAEMON_SESSION_DIR: directory,
+	};
+	delete env.WEFT_MANAGEMENT_TOKEN;
+	// The fixed registry caches its directory; a separate process keeps Agent cleanup scoped.
+	await promisify(execFile)(
+		process.execPath,
+		[
+			"-e",
+			`
+const { Registry } = require(process.argv[1] + "/lib/tools/cli-client/registry.js");
+const { Session } = require(process.argv[1] + "/lib/tools/cli-client/session.js");
+(async () => {
+  const registry = await Registry.load();
+  for (const entries of registry.entryMap().values())
+    for (const entry of entries) await new Session(entry).stop();
+})().catch(error => { console.error(error); process.exitCode = 1; });
+`,
+			playwrightCoreRoot,
+		],
+		{ env, timeout: 10000, maxBuffer: 8192 },
+	);
 }

@@ -1656,7 +1656,10 @@ export function createServer(
 			failure ??= error;
 		});
 		state.stopped = true;
-		await commands.closeAgent(scratchId(agentId));
+		await commands.closeAgent(scratchId(agentId)).catch((error) => {
+			cleanupFailures.add(agentId);
+			failure ??= error;
+		});
 		if (closed) return;
 		while (children(agentId).some((child) => running.has(Number(child.id)))) {
 			await new Promise<void>((resolve) => {

@@ -153,3 +153,52 @@ test("browser crash reports must match this run's PID and capture time", () => {
 		false,
 	);
 });
+
+test("Agent cleanup stops only its CLI daemons while another Agent keeps using its browser", {
+	skip: process.platform !== "darwin",
+	timeout: 60000,
+}, async (t) => {
+	const directory = await realpath(
+		await mkdtemp(join(tmpdir(), "browser-cleanup-")),
+	);
+	await useTemporaryHome(t, directory);
+	const executor = new CommandExecutor();
+	const first = `bc-a-${process.pid}`;
+	const second = `bc-b-${process.pid}`;
+	const run = async (agentId: string, command: string) => {
+		let output = "";
+		const result = await executor.execute({
+			agentId,
+			command,
+			cwd: directory,
+			signal: new AbortController().signal,
+			timeoutMs: 15000,
+			onOutput: (_stream, text) => {
+				output += text;
+			},
+		});
+		assert.equal(result.exitCode, 0, output);
+		return output;
+	};
+	try {
+		for (const id of [first, second])
+			await run(id, "playwright-cli open about:blank --browser=chromium");
+		await executor.closeAgent(first);
+		assert.doesNotMatch(
+			await run(first, "playwright-cli list --all"),
+			/status: open/,
+		);
+		assert.match(
+			await run(second, "playwright-cli list --all"),
+			/status: open/,
+		);
+		assert.match(
+			await run(second, 'playwright-cli run-code "async page => page.url()"'),
+			/about:blank/,
+		);
+	} finally {
+		for (const id of [first, second]) await run(id, "playwright-cli close-all");
+		await executor.close();
+		await rm(directory, { recursive: true, force: true });
+	}
+});
