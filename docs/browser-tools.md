@@ -109,8 +109,45 @@ connection; do not close the whole user browser, clear its profile or sign out.
 Close only pages owned by this task. Independently created temporary browsers
 still use `close` as documented upstream.
 
+## Login and connection handoff in ordinary chat
+
+Keep connection authorization, website authentication and task completion separate.
+A running `browser_connect` session can be waiting for the upstream picker:
+explain the selected browser/profile and where to approve it, then yield with the
+ordinary command tools. Missing-extension output warrants the installation steps
+above; waiting, an unavailable page or an uncertain connection failure does not.
+Do not configure an extension token merely to avoid the normal picker.
+
+Inspect the actual selected page before deciding that the task needs a login.
+Public content can be used without signing in; an existing valid login needs no
+additional request. If protected content requires user verification, identify the
+task page and ask the user to complete it in that same profile, then reply in this
+Chat. Retain any login/intermediate page and its unfinished form; detach instead
+of closing it. Record the task-relevant page identity in the ordinary answer so
+the next Root can identify the handoff. Do not print authentication material.
+
+An ordinary reply starts a new Root, with the existing Chat history and saved
+personal target. Call `browser_connect` again and explicitly reselect the handed
+over page in the upstream picker. A saved target is not permission to acquire
+unrelated pages or a still-owned page of another Agent. Observe the actual page
+and protected content before continuing: "done" is not proof of login. If the
+user has not completed verification, retain the page and explain the remaining
+step. Expiration follows the same target and handoff; never search other
+profiles or change accounts to recover it. A missing page is a real failure to
+report, not permission to silently substitute another page.
+
+There is no browser-specific question tool or resumable old Agent. Stop, Steer
+and shutdown end the current execution; late login or connection approval must
+not restart it. A later explicit submission reconnects and observes state anew.
+Neither successful handoff nor cancellation guarantees that a website preserves
+its intermediate state indefinitely; sites may expire forms or reject automation.
+
 #187 and #188 of [#186](https://github.com/tylerlong/weft/issues/186) provide
-single-Agent extension access and saved Chat target inheritance. Manual handoff is covered by #189; Chrome concurrency and owned lifecycle cleanup are covered by #190 below. Both-browser final compatibility belongs to #191. Shared browser Cookies and website account state are not isolated by tabs.
+single-Agent extension access and saved Chat target inheritance. #189 verifies
+ordinary-chat login handoff and canceled pending authorization through the real
+extension. Chrome concurrency and owned lifecycle cleanup are covered by #190
+below. Both-browser final compatibility belongs to #191. Shared browser Cookies
+and website account state are not isolated by tabs.
 
 ## Concurrent pages and lifecycle (#190)
 
@@ -255,3 +292,42 @@ separate evidence; no paid model was used.
 Chat targets add schema version 27. In accordance with ADR 0001, unsupported
 older databases are rejected and preserved, without automatic migration or
 rebuilding. Validation uses a disposable test database, not the user's database.
+
+### Ordinary-chat handoff acceptance (#189, 2026-10-27)
+
+```sh
+WEFT_TEST_EXTENSION_CHANNEL=chrome node --test test/browser-handoff-extension.test.ts
+WEFT_TEST_EXTENSION_CHANNEL=chrome node --test test/browser-authorization-extension.test.ts
+```
+
+Both opt-in scenarios ran with the real Chrome 156.0.8078.48 / official extension
+0.4.0 / pinned CLI 1.63.0 on macOS. Native UI supplied only the designated
+localhost page in each ordinary upstream picker and simulated the controlled
+login/checkpoint buttons. No token was configured. Temporary servers, ports and
+databases were independent of the user service. The login test creates its own
+unique localhost Cookie; it does not inspect or alter real account credentials.
+
+The handoff test submits five ordinary HTTP Chat messages. Roots finish without
+an explicit detach, so normal Agent cleanup must release their connection while
+preserving the intermediate page and exact unsubmitted input. A premature
+"continue" still observes the login page. After controlled user login, a new
+Root reselects the retained page and reads actual protected content. Controlled
+session expiration repeats the same-target login/reply/protected-read path.
+The final Root closes only its test tab. These are browser observations, not
+Cookie-existence or user-confirmation assertions.
+
+The authorization test observes actual pending pickers before HTTP Stop, Steer
+and service shutdown. For each canceled connection, a subsequent native approval
+attempt reports the real upstream relay WebSocket error; the old model loop
+does not resume and no Chat target is saved. After restart, a newly submitted
+Root explicitly reconnects and reads the unchanged controlled page. Native
+observation checkpoints are part of this opt-in acceptance, not a mocked
+extension or an unattended CI test.
+
+Initial missing-extension failure, user installation and later successful
+Chrome/Edge attachment were observed across #187's blocked/resumed execution;
+the tests do not automatically install or recreate marketplace installation.
+The existing read-only Edge private-repository check is recorded above. #189's
+complete login/cancellation scenarios were run in Chrome; the final compatibility
+ticket separately covers Edge. No SMS, fingerprint, passkey or paid-model decision
+quality was tested. Website-specific expiry and automation restrictions remain.
