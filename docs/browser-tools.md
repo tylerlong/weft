@@ -127,7 +127,7 @@ connection; do not close the whole user browser, clear its profile or sign out.
 Close only pages owned by this task. Independently created temporary browsers
 still use `close` as documented upstream.
 
-## Login and connection handoff in ordinary chat
+## Human handoff and browser connection approval in ordinary chat
 
 Keep connection authorization, website authentication and task completion separate.
 A running `browser_connect` session can be waiting for the upstream picker:
@@ -148,23 +148,24 @@ An ordinary reply starts a new Root, with the existing Chat history and saved
 personal target. Call `browser_connect` again and explicitly reselect the handed
 over page in the upstream picker. A saved target is not permission to acquire
 unrelated pages or a still-owned page of another Agent. Observe the actual page
-and protected content before continuing: "done" is not proof of login. If the
-user has not completed verification, retain the page and explain the remaining
-step. Expiration follows the same target and handoff; never search other
+and task-relevant content before continuing: "done" is not proof that the human
+step succeeded. If the user has not completed it, retain the page and explain the
+remaining step. Expiration follows the same target and handoff; never search other
 profiles or change accounts to recover it. A missing page is a real failure to
 report, not permission to silently substitute another page.
 
 There is no browser-specific question tool or resumable old Agent. Stop, Steer
-and shutdown end the current execution; late login or connection approval must
-not restart it. A later explicit submission reconnects and observes state anew.
+and shutdown end the current execution. A later human action does not resume the
+old Agent; approving a stale connection prompt must not establish its cancelled
+browser client. A later explicit submission reconnects and observes state anew.
 Neither successful handoff nor cancellation guarantees that a website preserves
 its intermediate state indefinitely; sites may expire forms or reject automation.
 
 #187 and #188 of [#186](https://github.com/tylerlong/weft/issues/186) provide
-single-Agent extension access and saved Chat target inheritance. #189 verifies
-ordinary-chat login handoff and canceled pending authorization through the real
-extension. Chrome concurrency and owned lifecycle cleanup are covered by #190
-below. Both-browser final compatibility evidence is recorded in the #191 matrix below. Shared browser Cookies
+single-Agent extension access and saved Chat target inheritance. Historical #189
+acceptance verified a longer login-themed fixture and cancelled pending browser
+authorization. #194 narrows the current fixture to human-state continuity. Chrome concurrency and owned lifecycle cleanup are
+covered by #190 below. Both-browser final compatibility evidence is recorded in the #191 matrix below. Shared browser Cookies
 and website account state are not isolated by tabs.
 
 ## Concurrent pages and lifecycle (#190)
@@ -311,12 +312,47 @@ Chat targets add schema version 27. In accordance with ADR 0001, unsupported
 older databases are rejected and preserved, without automatic migration or
 rebuilding. Validation uses a disposable test database, not the user's database.
 
-### Ordinary-chat handoff acceptance (#189, 2026-10-27)
+### Current human-handoff acceptance (#194, 2026-10-27)
+
+The current handoff fixture has three Roots: unavailable content with exact
+unfinished input; premature continuation that observes the same incomplete
+page/input; then one controlled human action and a new Root that reads the
+completed page in the same selected target. The final Root closes only its owned
+page and detaches. The separate expiry/re-login cycle has been removed.
+
+The controlled action sets a unique, profile-bound localhost Cookie. A fresh
+request without that Cookie must remain incomplete even after the server records
+the human action. This is browser-state continuity coverage, not a website
+password/SMS/passkey protocol or proof of real-model reasoning: the model fixture
+scripts actions and the assertions inspect actual page results and tool records.
+
+The shortened case passed in **67.3 s** through the HTTP API, model fixture,
+official CLI and real Chrome 156.0.8078.48 / extension 0.4.0 on macOS 26.7.1,
+Node 24.21.0 and pinned CLI 1.63.0. Native UI selected only the owned localhost tab
+for three connections and performed one controlled human step. The Cookie-free
+request, retained input, incomplete/completed observations, saved target and
+owned cleanup assertions passed. Original Chrome tabs remained open and their
+active tab was restored. No real account authentication, installation, browser
+quit or optional profile-window reopen checkpoint was used in this run. The full
+Chrome/Edge matrix was not repeated for this fixture-only cleanup.
+
+Run a selected live case explicitly, with an already configured browser:
 
 ```sh
 WEFT_TEST_EXTENSION_CHANNEL=chrome node --test test/browser-handoff-extension.test.ts
 WEFT_TEST_EXTENSION_CHANNEL=chrome node --test test/browser-authorization-extension.test.ts
 ```
+
+Default `pnpm test` skips live extension cases unless their channel is enabled.
+Do not export the shared channel flag globally and run all tests: that enables
+multiple actor-driven cases concurrently, not an unattended acceptance suite.
+Use process-scoped settings and individual files. Revisit relevant compatibility
+checks after browser connection/lifecycle changes or significant dependency
+changes, not every unrelated edit. Connection approval/cancellation, raw CLI,
+tracked connection, target/configuration, concurrency and ownership tests remain
+separate coverage.
+
+### Historical ordinary-chat handoff acceptance (#189, 2026-10-27)
 
 Both opt-in scenarios ran with the real Chrome 156.0.8078.48 / official extension
 0.4.0 / pinned CLI 1.63.0 on macOS. Native UI supplied only the designated
@@ -325,7 +361,7 @@ login/checkpoint buttons. No token was configured. Temporary servers, ports and
 databases were independent of the user service. The login test creates its own
 unique localhost Cookie; it does not inspect or alter real account credentials.
 
-The handoff test submits five ordinary HTTP Chat messages. Roots finish without
+At #189, the handoff test submitted five ordinary HTTP Chat messages. Roots finished without
 an explicit detach, so normal Agent cleanup must release their connection while
 preserving the intermediate page and exact unsubmitted input. A premature
 "continue" still observes the login page. After controlled user login, a new
@@ -347,17 +383,17 @@ Chrome/Edge attachment were observed across #187's blocked/resumed execution;
 the tests do not automatically install or recreate marketplace installation.
 The existing read-only Edge private-repository check is recorded above. #189's
 complete login/cancellation scenarios were run in Chrome; the final compatibility
-matrix above separately records Edge. No SMS, fingerprint, passkey or paid-model decision
+matrix below separately records Edge. No SMS, fingerprint, passkey or paid-model decision
 quality was tested. Website-specific expiry and automation restrictions remain.
 Website authentication mechanisms belong to the human and the website, outside
 Weft acceptance. These controlled fixtures verify browser-state continuity after
 human action; the untested methods above are not unfinished Weft features.
 
-[Follow-up specification #194](https://github.com/tylerlong/weft/issues/194)
-retains the first controlled handoff, unfinished-page retention
-and premature-continue checks, and removes the separate expiry/re-login repetition.
-Connection-approval cancellation remains distinct lifecycle coverage. The current
-five-Root test and historical results below have not yet been rewritten.
+[#194](https://github.com/tylerlong/weft/issues/194) retains the first controlled
+handoff, unfinished-page retention and premature-continue checks in the current
+three-Root fixture. The five-Root results above and the #191 matrix below remain
+historical evidence; they are not timings or execution proof for the shortened
+case. Connection-approval cancellation remains distinct lifecycle coverage.
 
 
 ### Final compatibility acceptance (#191, 2026-10-27)
@@ -404,14 +440,24 @@ WEFT_TEST_EXTENSION_CHANNEL=chrome \
   node --test test/browser-handoff-extension.test.ts
 ```
 
-The optional checkpoint runs after the first controlled login. Close only that
+The optional checkpoint runs after the controlled human action. Close only that
 disposable profile's window and observe its closure, then POST to the printed
 `/profile-closed` checkpoint. The next HTTP Root reopens the saved profile through
 normal upstream attach; open/reselect only the localhost page and verify actual
-protected content before controlled expiry. The test uses a one-hour persistent
-localhost Cookie so this checks still-valid login data. The checkpoint records a
+completed content in the final Root. The test uses a one-hour persistent localhost
+Cookie so this checks reuse of still-valid browser state. The checkpoint records a
 native observation, not a mock close, and the test asserts the actual saved root
 and profile. It does not claim that the whole Chrome process stopped.
+
+A later one-time cold Chrome process-restart check (2026-10-27), explicitly
+authorized by the user, passed in 312.5 s on Chrome 156.0.8078.48 with a controlled
+localhost site. All Chrome main processes were observed exited before the next
+HTTP Root's upstream attach launched a new Chrome process; the same selected
+profile read the controlled content without repeating the human login. The
+original tabs were restored and the temporary manual harness removed. This was
+separate evidence after #191, not a rerun of its profile-window checkpoint or the
+current shortened #194 fixture. It does not prove real-site SMS/biometric behavior
+or grant recurring permission to quit personal Chrome. No default test quits it.
 
 Failure evidence is separated from successful attachment:
 

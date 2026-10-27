@@ -34,7 +34,7 @@ const answer = (text: string) =>
 		],
 	});
 
-test("ordinary chat resumes real extension login and unfinished page after Root cleanup", {
+test("ordinary chat continues a human handoff and unfinished page after Root cleanup", {
 	skip: process.platform !== "darwin" || !channel,
 	timeout: 600000,
 }, async () => {
@@ -42,31 +42,29 @@ test("ordinary chat resumes real extension login and unfinished page after Root 
 	const directory = await realpath(
 		await mkdtemp(join(tmpdir(), "weft-handoff-")),
 	);
-	let authenticated = false;
-	let logins = 0;
+	let completions = 0;
 	let profileClosed = false;
-	const loginCookie = `weft_handoff_${randomUUID()}=active`;
+	const stateCookie = `weft_handoff_${randomUUID()}=active`;
 	const site = createServer((req, res) => {
 		if (req.url === "/profile-closed" && req.method === "POST") {
 			profileClosed = true;
 			res.end("Recorded");
 			return;
 		}
-		if (req.url === "/login" && req.method === "POST") {
-			authenticated = true;
-			logins++;
+		if (req.url === "/complete" && req.method === "POST") {
+			completions++;
 			res.writeHead(303, {
 				location: "/",
-				"set-cookie": `${loginCookie}; Max-Age=3600; HttpOnly; SameSite=Strict`,
+				"set-cookie": `${stateCookie}; Max-Age=3600; HttpOnly; SameSite=Strict`,
 			});
 			res.end();
 			return;
 		}
 		res.setHeader("content-type", "text/html");
 		res.end(
-			authenticated && req.headers.cookie?.includes(loginCookie)
-				? "<title>Weft login handoff acceptance</title><h1>Protected handoff content</h1>"
-				: '<title>Weft login handoff acceptance</title><h1>Test login required</h1><form method="post" action="/login"><label>Unfinished step<input name="draft"></label><button>Complete controlled login</button></form>',
+			completions === 1 && req.headers.cookie?.includes(stateCookie)
+				? "<title>Weft human handoff acceptance</title><h1>Human handoff content</h1>"
+				: '<title>Weft human handoff acceptance</title><h1>Human action required</h1><form method="post" action="/complete"><label>Unfinished step<input name="draft"></label><button>Complete controlled human step</button></form>',
 		);
 	}).listen(0, "127.0.0.1");
 	await new Promise<void>((resolve) => site.once("listening", resolve));
@@ -74,7 +72,7 @@ test("ordinary chat resumes real extension login and unfinished page after Root 
 	assert(siteAddress && typeof siteAddress !== "string");
 	const url = `http://127.0.0.1:${siteAddress.port}/`;
 	console.log(
-		`HANDOFF ACCEPTANCE: Open ${url} in ${channel}. Approve only that tab on every connection. Do NOT submit login until HANDOFF LOGIN REQUESTED.`,
+		`HANDOFF ACCEPTANCE: Open ${url} in ${channel}. Approve only that tab on every connection. Do NOT complete the human step until HANDOFF HUMAN ACTION REQUESTED.`,
 	);
 	let scenario = "first";
 	let phase = 0;
@@ -133,9 +131,7 @@ test("ordinary chat resumes real extension login and unfinished page after Root 
 			const prepare =
 				scenario === "first"
 					? 'await page.getByLabel("Unfinished step").fill("pending-first-step");'
-					: scenario === "expired"
-						? 'await page.reload(); await page.getByLabel("Unfinished step").fill("pending-expired-step");'
-						: "";
+					: "";
 			return tool("exec_command", {
 				cmd: `playwright-cli -s=weft-personal run-code 'async page => {if(page.url()!=="${url}") throw new Error("Select only the localhost handoff page"); ${prepare} return {heading:await page.locator("h1").textContent(),draft:await page.getByLabel("Unfinished step").count()?await page.getByLabel("Unfinished step").inputValue():null};}'`,
 				timeout_ms: 30000,
@@ -145,25 +141,20 @@ test("ordinary chat resumes real extension login and unfinished page after Root 
 			const proof = JSON.parse(
 				output.match(/### Result\r?\n(\{[^\n]+\})/)?.[1] ?? "null",
 			);
-			const pending = ["first", "not-done", "expired"].includes(scenario);
+			const pending = ["first", "not-done"].includes(scenario);
 			assert.deepEqual(
 				proof,
 				pending
 					? {
-							heading: "Test login required",
-							draft:
-								scenario === "expired"
-									? "pending-expired-step"
-									: "pending-first-step",
+							heading: "Human action required",
+							draft: "pending-first-step",
 						}
-					: { heading: "Protected handoff content", draft: null },
+					: { heading: "Human handoff content", draft: null },
 			);
 			observed.push({ scenario, ...proof });
-			if (scenario !== "relogged")
+			if (pending)
 				return answer(
-					pending
-						? "Complete the controlled login in the same retained page, then reply in this chat."
-						: "Protected handoff content confirmed from the actual page.",
+					"Complete the controlled human step in the same retained page, then reply in this chat.",
 				);
 			output = "";
 			return tool("exec_command", {
@@ -171,7 +162,7 @@ test("ordinary chat resumes real extension login and unfinished page after Root 
 				timeout_ms: 30000,
 			});
 		}
-		return answer("Protected handoff content confirmed from the actual page.");
+		return answer("Human handoff content confirmed from the actual page.");
 	};
 	const server = createTestServer(
 		fixture,
@@ -220,15 +211,15 @@ test("ordinary chat resumes real extension login and unfinished page after Root 
 		}
 		assert.fail("Handoff Root did not finish");
 	};
-	const waitForLogin = async (count: number) => {
+	const waitForHumanAction = async () => {
 		console.log(
-			`HANDOFF LOGIN REQUESTED ${count}: Submit only the controlled login at ${url}; its unfinished field must still be populated.`,
+			`HANDOFF HUMAN ACTION REQUESTED: Complete only the controlled human step at ${url}; its unfinished field must still be populated.`,
 		);
 		for (let n = 0; n < 1200; n++) {
-			if (logins === count) return;
+			if (completions === 1) return;
 			await setTimeout(100);
 		}
-		assert.fail("Controlled login was not completed");
+		assert.fail("Controlled human step was not completed");
 	};
 	try {
 		await request("/api/execution-limits", { modelCallLimit: 200 }, "PATCH");
@@ -242,16 +233,21 @@ test("ordinary chat resumes real extension login and unfinished page after Root 
 		await ask(
 			chat.id,
 			"first",
-			"Read the protected controlled page; request login if needed.",
+			"Read the controlled page; request human action if needed.",
 		);
-		assert.equal(logins, 0);
+		assert.equal(completions, 0);
 		await ask(
 			chat.id,
 			"not-done",
-			"Continue, but I have not completed the login yet.",
+			"Continue, but I have not completed the human step yet.",
 		);
-		assert.equal(logins, 0);
-		await waitForLogin(1);
+		assert.equal(completions, 0);
+		await waitForHumanAction();
+		assert.match(
+			await (await globalThis.fetch(url)).text(),
+			/<h1>Human action required<\/h1>/,
+			"a fresh browser without the fixture Cookie must remain incomplete",
+		);
 		if (process.env.WEFT_TEST_EXTENSION_REOPEN_PROFILE === "1") {
 			assert.equal(channel, "chrome");
 			assert(
@@ -267,22 +263,11 @@ test("ordinary chat resumes real extension login and unfinished page after Root 
 				"Disposable profile window closure was not observed",
 			);
 		}
-		await ask(chat.id, "continued", "Login completed, continue.");
-		authenticated = false;
-		await ask(
-			chat.id,
-			"expired",
-			"Read the protected page again after the controlled session expires.",
-		);
-		await waitForLogin(2);
-		await ask(
-			chat.id,
-			"relogged",
-			"Finished the controlled login again, continue.",
-		);
+		await ask(chat.id, "continued", "Human step completed, continue.");
+		assert.equal(completions, 1);
 		assert.deepEqual(
 			observed.map((x) => x.scenario),
-			["first", "not-done", "continued", "expired", "relogged"],
+			["first", "not-done", "continued"],
 		);
 		assert.deepEqual(
 			(await request(`/api/chats/${chat.id}`)).browserTarget,
