@@ -146,7 +146,7 @@ its intermediate state indefinitely; sites may expire forms or reject automation
 single-Agent extension access and saved Chat target inheritance. #189 verifies
 ordinary-chat login handoff and canceled pending authorization through the real
 extension. Chrome concurrency and owned lifecycle cleanup are covered by #190
-below. Both-browser final compatibility belongs to #191. Shared browser Cookies
+below. Both-browser final compatibility evidence is recorded in the #191 matrix below. Shared browser Cookies
 and website account state are not isolated by tabs.
 
 ## Concurrent pages and lifecycle (#190)
@@ -194,7 +194,7 @@ popup attempts in the initial test timed out without creating a popup; foregroun
 control is shared and is not the isolation evidence. Actual owned URL lists,
 input values and group membership establish the tested page scopes. The test
 uses a controlled model fixture, so it does not prove real-model task judgment.
-Edge concurrency remains for #191; this Chrome result does not establish it.
+The #191 matrix below records the separate real Edge concurrency run; this Chrome result alone does not establish Edge compatibility.
 
 Shared Cookies, same-origin storage, browser focus and website server state can
 still affect other clients. Tab ownership is not account or storage isolation.
@@ -223,9 +223,9 @@ The test explicitly selects upstream `outputMode: stdout` for inline diagnostic
 assertions; production CLI defaults are unchanged. Native CI installs Chromium
 and runs both tests on macOS, alongside the existing lifecycle tests.
 
-Upstream detached CLI daemons can outlive a command and have their normal idle
-timeout. The model must close browsers it owns; Weft does not add a Chat lifetime
-policy or automatic personal-browser attachment. Browser artifacts use the
+Upstream detached CLI daemons can outlive a command, so Agent cleanup explicitly
+stops only sessions in that Agent's registry. The model should still close temporary
+browsers it no longer needs; Weft adds no Chat keepalive or automatic personal-browser attachment. Browser artifacts use the
 chosen cwd and normal file permissions, so save wanted screenshots and trace
 files in a Target Folder. No paid model calls were used; protocol evidence does
 not prove that a paid model interpreted the image or chose the right operation.
@@ -329,5 +329,90 @@ Chrome/Edge attachment were observed across #187's blocked/resumed execution;
 the tests do not automatically install or recreate marketplace installation.
 The existing read-only Edge private-repository check is recorded above. #189's
 complete login/cancellation scenarios were run in Chrome; the final compatibility
-ticket separately covers Edge. No SMS, fingerprint, passkey or paid-model decision
+matrix above separately records Edge. No SMS, fingerprint, passkey or paid-model decision
 quality was tested. Website-specific expiry and automation restrictions remain.
+
+
+### Final compatibility acceptance (#191, 2026-10-27)
+
+The compatibility host is macOS 26.7.1 (25G241), Node 24.21.0, pinned Playwright CLI
+1.63.0, Chrome 156.0.8078.48 and Edge 156.0.4314.50, with the official extension
+0.4.0. Earlier Edge evidence used 156.0.4314.42; the following new Edge runs use
+156.0.4314.50. No paid model was called. Each HTTP fixture supplies model decisions;
+the real browser, upstream tool and persisted tool/command records supply the
+execution evidence.
+
+| Scenario | Actual evidence | Scope / remaining check |
+| --- | --- | --- |
+| Three clients, own navigation/new tabs/popups, tab move out/in, child Stop and independent Chat reconnect | Chrome #190 passed (198.5 s); Edge #191 passed (442.6 s) | Two Sub-agents plus another Chat; exact URL/input/group assertions. Native Ctrl-click exposes Edge's tab context menu; only the designated test tab was moved. |
+| Ordinary chat, retained unsubmitted input, premature continue, protected read, controlled expiry and same-target re-login | Chrome #189 passed (180.3 s); Edge #191 passed (148.2 s); independent disposable Chrome profile #191 passed (317.5 s) | Exact saved channel/root/profile checked. Controlled localhost Cookie/site and disposable Weft database; no real account login or expiration. |
+| Pending approval, Stop/Steer/shutdown, failed late approval and fresh explicit reconnect | Chrome #189 passed (218.4 s); Edge #191 passed (197.3 s) | An earlier Edge attempt timed out at a native observation checkpoint after focus changed; only the fresh complete run counts as passing. Late approval produced the actual upstream relay WebSocket error. |
+| Chrome disposable profile window close/reopen and persisted login | Included in the 317.5 s dedicated-profile handoff run | All test-profile tabs/windows were closed, normal upstream attach reopened the same profile, and the next Root read protected content. The personal Chrome process stayed running; this does not establish a cold browser-process restart. |
+| Real existing Edge account | #187 and the current Edge 156.0.4314.50 recheck read the private `tylerlong/sanguosha` repository's Private marker and file table without another login | The recheck used a fresh owned tab and returned only proof booleans. It closed that tab, detached and verified the isolated registry empty; existing user pages stayed open. |
+
+The user explicitly authorized installing the official extension in and removing
+a disposable test profile. Native Chrome created the signed-out profile
+**Weft #191 Disposable** (actual directory `Profile 5`) in the existing installation;
+no profile or Cookies were copied and no token was configured. The official
+marketplace installed extension 0.4.0 there. After acceptance, Chrome's native
+profile manager removed only that exact disposable profile; its profile-list
+entry and directory were confirmed absent. Existing profiles remained.
+
+The earlier attempt to use an independent `/tmp/weft-191-chrome-*` user-data root
+could launch its own Chrome process, but the native tool could not select that
+second process with the same app identity. Its exact owned PID was stopped and
+its unused root removed. It is not counted as successful profile acceptance.
+The approved same-installation disposable profile avoided changing existing
+profile data or closing personal Chrome.
+
+To repeat with an explicitly owned disposable profile, select the real root and
+directory using the existing upstream `PWTEST_EXTENSION_USER_DATA_DIR` and
+`PLAYWRIGHT_MCP_PROFILE_DIR_NAME` environment variables. For example:
+
+```sh
+WEFT_TEST_EXTENSION_CHANNEL=chrome \
+  PWTEST_EXTENSION_USER_DATA_DIR=/absolute/chrome/user-data-root \
+  PLAYWRIGHT_MCP_PROFILE_DIR_NAME='Profile N' \
+  WEFT_TEST_EXTENSION_REOPEN_PROFILE=1 \
+  node --test test/browser-handoff-extension.test.ts
+```
+
+The optional checkpoint runs after the first controlled login. Close only that
+disposable profile's window and observe its closure, then POST to the printed
+`/profile-closed` checkpoint. The next HTTP Root reopens the saved profile through
+normal upstream attach; open/reselect only the localhost page and verify actual
+protected content before controlled expiry. The test uses a one-hour persistent
+localhost Cookie so this checks still-valid login data. The checkpoint records a
+native observation, not a mock close, and the test asserts the actual saved root
+and profile. It does not claim that the whole Chrome process stopped.
+
+Failure evidence is separated from successful attachment:
+
+- Missing extension/selected profile: the regular HTTP diagnostics and target
+  tests invoke the actual CLI against disposable HOME/profile paths, retain the
+  upstream error/store link and leave the Chat unbound.
+- Disabled extension: only Playwright in the disposable Chrome profile was
+  disabled. Actual attach displayed **ERR_BLOCKED_BY_CLIENT** and never attached;
+  its owned pending CLI was interrupted after 35 seconds and its isolated registry
+  was empty. It was re-enabled before profile removal. This was a native UI/CLI
+  probe; the HTTP pending-cancellation scenarios separately establish Chat and
+  Agent state. Installation records alone did not prove a usable connection.
+- Unfinished login and unanswered authorization remain incomplete; the handoff
+  and pending-approval tests observe these states rather than assuming success.
+- Actual owned page closure removes it from the client's URL scope, and tab move
+  out/in loses/reacquires access without adopting another client's or unrelated
+  page. Stop/Steer/shutdown and failed late approval are covered above.
+
+The regular native browser regression also opens a temporary browser with the
+public `--persistent --profile=<owned-directory>` arguments, writes local storage,
+closes and reopens that profile, then reads the saved value. This is actual CLI
+and native-command evidence, separate from the HTTP diagnostics' console,
+request/response bodies, screenshots/read-image and trace checks. Raw CDP and
+custom-executable arguments remain forwarded unchanged; no live CDP compatibility
+claim is made.
+
+The opt-in tests are skipped in unattended CI. Tests do not prove real-model
+judgment, arbitrary website compatibility, SMS, fingerprint or passkey flows.
+Marketplace installation and real-person authentication are not simulated as
+successful extension acceptance. Shared Cookies, same-origin storage and account
+server state remain shared even when page ownership is separate.

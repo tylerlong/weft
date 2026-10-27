@@ -44,14 +44,20 @@ test("ordinary chat resumes real extension login and unfinished page after Root 
 	);
 	let authenticated = false;
 	let logins = 0;
+	let profileClosed = false;
 	const loginCookie = `weft_handoff_${randomUUID()}=active`;
 	const site = createServer((req, res) => {
+		if (req.url === "/profile-closed" && req.method === "POST") {
+			profileClosed = true;
+			res.end("Recorded");
+			return;
+		}
 		if (req.url === "/login" && req.method === "POST") {
 			authenticated = true;
 			logins++;
 			res.writeHead(303, {
 				location: "/",
-				"set-cookie": `${loginCookie}; HttpOnly; SameSite=Strict`,
+				"set-cookie": `${loginCookie}; Max-Age=3600; HttpOnly; SameSite=Strict`,
 			});
 			res.end();
 			return;
@@ -73,7 +79,9 @@ test("ordinary chat resumes real extension login and unfinished page after Root 
 	let scenario = "first";
 	let phase = 0;
 	let output = "";
-	let target: unknown;
+	let target:
+		| { channel: string; userDataDir: string; profile: string }
+		| undefined;
 	const observed: {
 		scenario: string;
 		heading: string;
@@ -110,6 +118,17 @@ test("ordinary chat resumes real extension login and unfinished page after Root 
 			assert.match(output, /attached to/);
 			target ??= current;
 			assert.deepEqual(current, target);
+			assert(current);
+			if (process.env.PWTEST_EXTENSION_USER_DATA_DIR)
+				assert.equal(
+					current.userDataDir,
+					process.env.PWTEST_EXTENSION_USER_DATA_DIR,
+				);
+			if (process.env.PLAYWRIGHT_MCP_PROFILE_DIR_NAME)
+				assert.equal(
+					current.profile,
+					process.env.PLAYWRIGHT_MCP_PROFILE_DIR_NAME,
+				);
 			output = "";
 			const prepare =
 				scenario === "first"
@@ -233,6 +252,21 @@ test("ordinary chat resumes real extension login and unfinished page after Root 
 		);
 		assert.equal(logins, 0);
 		await waitForLogin(1);
+		if (process.env.WEFT_TEST_EXTENSION_REOPEN_PROFILE === "1") {
+			assert.equal(channel, "chrome");
+			assert(
+				process.env.PLAYWRIGHT_MCP_PROFILE_DIR_NAME,
+				"Reopen acceptance requires an explicitly selected disposable Chrome profile",
+			);
+			console.log(
+				`HANDOFF PROFILE REOPEN: Close only the disposable Chrome profile window and verify its closure, then POST ${url}profile-closed. The next Root must reopen the same profile through upstream attach; select only ${url}.`,
+			);
+			for (let n = 0; n < 1200 && !profileClosed; n++) await setTimeout(100);
+			assert(
+				profileClosed,
+				"Disposable profile window closure was not observed",
+			);
+		}
 		await ask(chat.id, "continued", "Login completed, continue.");
 		authenticated = false;
 		await ask(

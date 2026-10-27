@@ -91,3 +91,18 @@ Codex 本身也提供 OneShot 模式；初次审查时 Weft 只接入这种行�
 - [Playwright CLI 官方说明](https://github.com/microsoft/playwright-cli)
 - [MCP Tools 规范](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 - [OpenRouter Responses 工具与多模态结果](https://openrouter.ai/docs/api_reference/responses/tool-calling)
+
+
+## 浏览器最终兼容性（#191）
+
+固定 CLI 1.63.0／官方扩展 0.4.0 已在 Chrome 156.0.8078.48 与 Edge
+156.0.4314.50 分别完成真实多客户端页面／popup／移入移出、独立取消和重连；
+普通聊天登录交接、未提交表单保持、过期重登及等待授权时 Stop／Steer／关闭服务
+也分别通过。受控模型 fixture 不证明真实模型决策质量。
+
+用户授权的独立临时 Chrome profile 已通过官方商店安装、实际登录交接、窗口关闭
+后由上游同目标重开及禁用扩展失败检查，并经原生界面删除；没有复制个人 Cookie、
+配置扩展 token、关闭整个个人浏览器或改变已有 profile 的资料。Edge 的现有登录
+验收只读访问指定私有仓库。临时浏览的显式 persistent/profile 参数通过实际关闭／
+重开后的存储读取回归；CDP 等未修改的原始参数继续完整转发，不宣称本次实际验证。
+版本、执行入口、失败和未测范围见[浏览器工具兼容性记录](browser-tools.md)。

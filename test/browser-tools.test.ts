@@ -103,7 +103,7 @@ test("native commands can read outside their cwd and launch, operate and close t
 		assert.match(await execute(`cd /; cat '${outside}'`), /outside-proof/);
 		await crashes.capture(
 			await execute(
-				`playwright-cli open http://127.0.0.1:${address.port} --browser=chromium`,
+				`playwright-cli open http://127.0.0.1:${address.port} --browser=chromium --persistent --profile='${join(directory, "profile")}'`,
 			),
 		);
 		assert.doesNotMatch(
@@ -112,9 +112,21 @@ test("native commands can read outside their cwd and launch, operate and close t
 		);
 		assert.match(
 			await execute(
-				`playwright-cli run-code 'async page => { await page.getByRole("button", { name: "Click me" }).click(); return await page.getByRole("button").textContent(); }'`,
+				`playwright-cli run-code 'async page => { await page.getByRole("button", { name: "Click me" }).click(); await page.evaluate(() => localStorage.setItem("weft-profile", "persisted-proof")); return await page.getByRole("button").textContent(); }'`,
 			),
 			/Clicked/,
+		);
+		await execute("playwright-cli close");
+		await crashes.capture(
+			await execute(
+				`playwright-cli open http://127.0.0.1:${address.port} --browser=chromium --persistent --profile='${join(directory, "profile")}'`,
+			),
+		);
+		assert.match(
+			await execute(
+				`playwright-cli run-code 'async page => await page.evaluate(() => localStorage.getItem("weft-profile"))'`,
+			),
+			/persisted-proof/,
 		);
 		await execute("playwright-cli close");
 		await crashes.assertNoCrashes();
