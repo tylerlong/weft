@@ -241,6 +241,8 @@ export function createServer(
 	// Agent IDs are database-local; separate services must not share retained scratch.
 	const scratchNamespace = randomUUID();
 	const scratchId = (agentId: number) => `${scratchNamespace}-${agentId}`;
+	// Pending connections never survive this service; selection revisions need no persisted state.
+	const browserSelectionRevisions = new Map<number, number>();
 	const browserTarget = (chatId: number): BrowserTarget | null => {
 		const value = database
 			.prepare("SELECT browser_target FROM chats WHERE id=?")
@@ -1123,10 +1125,15 @@ export function createServer(
 								| Awaited<ReturnType<typeof personalBrowserCommand>>
 								| undefined;
 							let previousTarget: BrowserTarget | null = null;
+							let previousSelectionRevision = 0;
+							let explicitBrowserSelection = false;
 							if (name === "browser_connect") {
 								if (!value || typeof value !== "object" || Array.isArray(value))
 									throw new InputError("invalidInput");
 								previousTarget = browserTarget(id);
+								previousSelectionRevision =
+									browserSelectionRevisions.get(id) ?? 0;
+								explicitBrowserSelection = value.change_target === true;
 								connection = await personalBrowserCommand(
 									value,
 									previousTarget,
@@ -1388,13 +1395,15 @@ export function createServer(
 								onState: (result) => {
 									if (
 										connection &&
+										previousSelectionRevision ===
+											(browserSelectionRevisions.get(id) ?? 0) &&
 										result.exitCode === 0 &&
 										!result.error &&
 										!result.cancelled &&
 										!result.interrupted &&
 										!result.timedOut
 									) {
-										database
+										const saved = database
 											.prepare(
 												"UPDATE chats SET browser_target=? WHERE id=? AND browser_target IS ?",
 											)
@@ -1402,6 +1411,16 @@ export function createServer(
 												JSON.stringify(connection.target),
 												id,
 												previousTarget ? JSON.stringify(previousTarget) : null,
+											);
+										if (
+											saved.changes &&
+											(explicitBrowserSelection ||
+												JSON.stringify(connection.target) !==
+													JSON.stringify(previousTarget))
+										)
+											browserSelectionRevisions.set(
+												id,
+												previousSelectionRevision + 1,
 											);
 									}
 									try {

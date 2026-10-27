@@ -69,9 +69,13 @@ observe the current page. A failed connection does not clear or replace it.
 
 Only an explicit user request warrants `change_target: true` together with the
 new channel/profile. Existing Agents keep their actual connections; their
-recorded attempt/state continues to identify that target. A connection that
-finishes after another Agent changed the Chat target cannot overwrite the newer
-choice. Future connections use the new target. Temporary CLI sessions work
+recorded attempt/state continues to identify that target. A connection compares
+its captured per-Chat selection revision before saving,
+so a newer choice is protected even after X → Y → X returns to the same stored
+identity. Successful changes and explicit same-target selections advance the
+revision; ordinary same-target reconnects and other Chats do not. Revisions live
+only for this service lifetime because pending connections cannot survive a
+restart. Future connections use the new target. Temporary CLI sessions work
 before or after personal selection and never set or overwrite the Chat target.
 
 The raw CLI remains available for all upstream parameters, custom executable,
@@ -452,3 +456,13 @@ tab was closed. The first run exposed a test assumption that snapshots were
 inline; the harness was corrected to inspect the retained file, and the clean
 rerun passed. This short check does not repeat the earlier full Chrome/Edge
 matrix, website login/handoff, or cancellation acceptance.
+
+### Concurrent selection revision regression
+
+`test/browser-target-concurrency.test.ts` exercises the HTTP/model-fixture/Chat
+state boundary while controlling only external `CommandExecutor` connection
+completion. It deterministically holds Z pending while X → Y → X completes,
+and checks that actual Z remains recorded while Chat retains the latest X.
+Separate cases cover an explicit same-target choice, an ordinary reconnect, and
+an independent Chat. These are state-coordination checks; they do not simulate
+real browser transport or replace the earlier Chrome/Edge acceptance evidence.
