@@ -110,9 +110,53 @@ Close only pages owned by this task. Independently created temporary browsers
 still use `close` as documented upstream.
 
 #187 and #188 of [#186](https://github.com/tylerlong/weft/issues/186) provide
-single-Agent extension access and saved Chat target inheritance. Complete manual
-handoff and concurrent cancellation/page ownership acceptance remain subsequent
-tickets; they are not established by target persistence. Shared browser Cookies and website account state are not isolated by tabs.
+single-Agent extension access and saved Chat target inheritance. Manual handoff is covered by #189; Chrome concurrency and owned lifecycle cleanup are covered by #190 below. Both-browser final compatibility belongs to #191. Shared browser Cookies and website account state are not isolated by tabs.
+
+## Concurrent pages and lifecycle (#190)
+
+Each Agent uses its own CLI registry and extension client. The official extension
+assigns each client a separate tab group; new tabs and popups belong to that
+client, and moving a tab out of or back into the group removes or restores its
+access. A client does not automatically acquire another client's or an unrelated
+user tab. Reconnection still uses the upstream explicit page selection.
+
+Agent completion, Stop, Steer and service shutdown stop registered CLI sessions
+from that Agent's scratch registry through the pinned upstream `Session.stop`.
+This releases an attached personal connection while retaining its pages and
+profile; temporary browsers owned by those sessions close normally. Cleanup is
+bounded to 10 seconds, uses no global `kill-all`, and reports errors. The pinned
+registry/session interfaces must be revalidated when Playwright is upgraded.
+
+While a structured `browser_connect` is still waiting for approval, its daemon
+has not yet written a registry entry. Cancellation first uses the existing
+native interrupt and allows at most one second for the CLI's startup signal
+forwarder, then retains forced termination. This is trusted connection wiring,
+not a model-selectable generic command option. Ordinary commands keep their
+immediate forced cancellation, so interrupting a shell cannot run its trailing
+commands during a grace period. Do not use raw CLI attachment to bypass the
+tracked connection lifecycle.
+
+`test/browser-isolation-extension.test.ts` is opt-in via
+`WEFT_TEST_EXTENSION_CHANNEL=chrome`. The actual Chrome 156.0.8078.48 /
+extension 0.4.0 / CLI 1.63.0 run on macOS passed: two concurrent Sub-agents and
+a Root in another Chat saw only their own pages, independently filled inputs and
+navigated new tabs, and kept their popups in the correct groups. An actual tab
+move out/in removed/restored access; stopping one Sub-agent retained the other
+clients' input and pages. Those clients closed only their own extra pages, and
+explicit detach/reconnect recovered the remaining page. Completion and Stop
+released all three groups without closing the retained pages or user browser.
+The operator removed only this run's localhost tabs afterward.
+
+The popup check uses the upstream `bringToFront` on its intended page and
+sequences popup clicks while all three clients remain connected. Background-page
+popup attempts in the initial test timed out without creating a popup; foreground
+control is shared and is not the isolation evidence. Actual owned URL lists,
+input values and group membership establish the tested page scopes. The test
+uses a controlled model fixture, so it does not prove real-model task judgment.
+Edge concurrency remains for #191; this Chrome result does not establish it.
+
+Shared Cookies, same-origin storage, browser focus and website server state can
+still affect other clients. Tab ownership is not account or storage isolation.
 
 ## Execution and validation
 

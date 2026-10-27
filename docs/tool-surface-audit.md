@@ -54,7 +54,8 @@ Codex 本身也提供 OneShot 模式；初次审查时 Weft 只接入这种行�
 - Tool Result 保存返回当时的事实；`commandState` 是同一启动 Tool Call 上的当前进程状态，完成时更新，服务重启时标记中断。详情页 Refresh 能读取新输出和状态；不重放或恢复旧句柄。
 - 输出预算仅限制交给模型的文本；默认 16000 字符，显式 token 预算使用 4 字符/token 的估算。交互续接返回新输出，超出预算的原记录仍能通过 `read_tool_output` 按字符有界补读。此估算不同于模型实际 tokenizer。
 - `shell` 为绝对可执行路径，默认 `/bin/sh`；`login` 在交互模式默认 true，旧 OneShot 保留默认 false。继承服务用户的正常 HOME、PATH 和开发环境，在 PATH 前接入随附 wrapper、Node 和 ripgrep，并显式移除 `WEFT_MANAGEMENT_TOKEN`。scratch 继续承担临时目录及 `XDG_CACHE_HOME`；`playwright-cli` wrapper 也保留宿主 HOME 供官方扩展发现个人 profile，仅将固定版 1.63.0 的 `PWTEST_DAEMON_SESSION_DIR` 设为 scratch 下的 `playwright-daemon`，保留各 Agent 独立 registry／daemon／socket（macOS registry 不使用 `XDG_CACHE_HOME`；该内部覆盖入口须在升级时复验）。exec-server 自己的最小环境和独立 HOME 不变。命令和配置文件读取使用 Full Access，可接触同账号可读的配置及凭据，不承诺隔离。不同于 Codex 按宿主配置选择默认 shell，Weft 不读取宿主 shell 配置来推导默认值。
-- 取消等待原生清理；Agent 结束时释放其所属进程，服务关闭先排空 Agent 后关闭执行后端。无命令内容识别、开发服务器策略或跨应用重启恢复。
+- 取消等待原生清理；Agent 结束时释放其所属进程，服务关闭先排空 Agent 后关闭执行后端。普通命令维持立即强制终止；只有结构化 `browser_connect` 的固定 CLI attach 在取消时先发原生 interrupt，最多等 1 秒使上游把信号转给尚未登记的启动 daemon，再强制终止。没有可由模型设置的通用软停止参数，不解析 shell 内容。
+- Agent 清理通过固定上游 Registry／Session.stop 停止其 scratch registry 内全部 CLI 会话，单次清理上限 10 秒；不枚举宿主 registry，不使用全局 kill-all，不清除 profile。个人扩展连接沿上游 detach 保留页面及登录；独立临时浏览器沿上游关闭。清理错误保留为执行失败。服务关闭也清理剩余所属 registry；没有后台保活、租约或跨应用重启恢复。
 
 已用现有 HTTP → 受控模型 → 实际固定版原生执行器测试 PTY 早返回后使用其他工具、写入、非 PTY 中断、输出预算与持久日志、归属及取消。上游 README 的 `process/write` 例子遗漏 `writeId`，实际 0.162.0 协议要求它；已按协议源文件和真实执行验证接线。
 

@@ -136,8 +136,7 @@ const { Registry } = require(process.argv[1] + "/lib/tools/cli-client/registry.j
 const { Session } = require(process.argv[1] + "/lib/tools/cli-client/session.js");
 (async () => {
   const registry = await Registry.load();
-  for (const entries of registry.entryMap().values())
-    for (const entry of entries) await new Session(entry).stop();
+  await Promise.all([...registry.entryMap().values()].flat().map(entry => new Session(entry).stop()));
 })().catch(error => { console.error(error); process.exitCode = 1; });
 `,
 			playwrightCoreRoot,
