@@ -76,7 +76,7 @@ Initial instruction discovery follows its named sources and reports read errors;
 
 `data/weft.sqlite` stores history, settings, and your **unencrypted API key**. Keep it private. To use another database, run `pnpm start --db /absolute/path/to/chat.sqlite`; its parent directory must already exist and be private to your user (for example, permissions `0700`).
 
-Unsupported databases are rejected without deletion or automatic migration. If an update requires a new database, use a fresh path and keep the old database for its records.
+Chat personal browser targets require schema version 27. Unsupported databases are rejected without deletion or automatic migration. If an update requires a new database, use a fresh path and keep the old database for its records.
 
 ### Command sessions
 

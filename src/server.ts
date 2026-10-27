@@ -11,6 +11,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { type BrowserTarget, personalBrowserCommand } from "./browser-tools.ts";
 import {
 	agentScratch,
 	CommandExecutor,
@@ -238,6 +239,12 @@ export function createServer(
 	// Agent IDs are database-local; separate services must not share retained scratch.
 	const scratchNamespace = randomUUID();
 	const scratchId = (agentId: number) => `${scratchNamespace}-${agentId}`;
+	const browserTarget = (chatId: number): BrowserTarget | null => {
+		const value = database
+			.prepare("SELECT browser_target FROM chats WHERE id=?")
+			.get(chatId)?.browser_target;
+		return value ? JSON.parse(String(value)) : null;
+	};
 	const savedOutput = (toolId: number) =>
 		database
 			.prepare(
@@ -320,7 +327,9 @@ export function createServer(
 					: null,
 				id: call.id,
 				...(content === true &&
-					["exec_command", "apply_patch"].includes(String(call.name)) && {
+					["exec_command", "apply_patch", "browser_connect"].includes(
+						String(call.name),
+					) && {
 						output: [...savedOutput(Number(call.id))],
 					}),
 				...(!content && { child: childOverview(Number(call.id)) }),
@@ -949,7 +958,11 @@ export function createServer(
 										.run(
 											ownerId,
 											redactTool(call.call_id),
-											["exec_command", "apply_patch"].includes(call.name)
+											[
+												"exec_command",
+												"apply_patch",
+												"browser_connect",
+											].includes(call.name)
 												? call.name
 												: redactTool(call.name),
 											redactTool(call.arguments),
@@ -1060,7 +1073,7 @@ export function createServer(
 					return {
 						...next,
 						scratch,
-						instructions: `${instructions}\n\n${skillsContext}\nMCP connections for this Agent: ${safeMcpConnections(mcp?.connections ?? [])}. Enabled MCP services use their configured accounts and environment. All tool calls follow the global safety review setting. Resource links are not already-read resources. MCP failures are facts; choose subsequent action without assuming an operation can safely be replayed.`,
+						instructions: `${instructions}\n\n${skillsContext}\nChat personal browser target: ${JSON.stringify(browserTarget(id))}. Use browser_connect to establish or explicitly change the tracked personal target; never replace it because login or connection failed. Temporary browsing uses ordinary CLI sessions and does not change this target. A saved target is not proof of a live connection or website login. Existing connections keep their actual target; reconnect explicitly after a change.\nMCP connections for this Agent: ${safeMcpConnections(mcp?.connections ?? [])}. Enabled MCP services use their configured accounts and environment. All tool calls follow the global safety review setting. Resource links are not already-read resources. MCP failures are facts; choose subsequent action without assuming an operation can safely be replayed.`,
 						additionalTools: mcp?.tools() ?? [],
 						secrets,
 					};
@@ -1095,6 +1108,7 @@ export function createServer(
 						);
 					if (
 						name === "exec_command" ||
+						name === "browser_connect" ||
 						name === "write_stdin" ||
 						name === "read_tool_output" ||
 						name === "apply_patch" ||
@@ -1102,7 +1116,31 @@ export function createServer(
 						name === "read_image"
 					) {
 						try {
-							const value = JSON.parse(args);
+							let value = JSON.parse(args);
+							let connection:
+								| Awaited<ReturnType<typeof personalBrowserCommand>>
+								| undefined;
+							let previousTarget: BrowserTarget | null = null;
+							if (name === "browser_connect") {
+								if (!value || typeof value !== "object" || Array.isArray(value))
+									throw new InputError("invalidInput");
+								previousTarget = browserTarget(id);
+								connection = await personalBrowserCommand(
+									value,
+									previousTarget,
+									scratch,
+								);
+								await reviewOperation(value, {
+									browserTarget: connection.target,
+									command: connection.command,
+								});
+								signal?.throwIfAborted();
+								value = {
+									command: connection.command,
+									cwd: scratch,
+									yield_time_ms: 1000,
+								};
+							}
 							if (
 								name === "read_image" &&
 								currentConfig(id, agentId).inputModalities &&
@@ -1200,7 +1238,7 @@ export function createServer(
 									throw new InputError("invalidInput");
 								const owner = database
 									.prepare(
-										"SELECT model_calls.agent_id FROM tool_calls JOIN model_calls ON model_calls.id=tool_calls.model_call_id WHERE tool_calls.id=? AND tool_calls.name IN ('exec_command','apply_patch')",
+										"SELECT model_calls.agent_id FROM tool_calls JOIN model_calls ON model_calls.id=tool_calls.model_call_id WHERE tool_calls.id=? AND tool_calls.name IN ('exec_command','apply_patch','browser_connect')",
 									)
 									.get(value.tool_call_id);
 								if (
@@ -1283,7 +1321,7 @@ export function createServer(
 											name === "apply_patch" ? "patch" : "command",
 											"cwd",
 											"timeout_ms",
-											...(name === "exec_command"
+											...(["exec_command", "browser_connect"].includes(name)
 												? [
 														"yield_time_ms",
 														"tty",
@@ -1325,7 +1363,7 @@ export function createServer(
 									30000,
 									Math.max(250, value.yield_time_ms),
 								);
-							await reviewOperation(value, { cwd: value.cwd });
+							if (!connection) await reviewOperation(value, { cwd: value.cwd });
 							if (runTool && name === "apply_patch")
 								return runTool(name, JSON.stringify(value), roots, signal);
 							let ordinal = 0;
@@ -1344,12 +1382,41 @@ export function createServer(
 								login: value.login,
 								toolCallId: toolId,
 								onState: (result) => {
+									if (
+										connection &&
+										result.exitCode === 0 &&
+										!result.error &&
+										!result.cancelled &&
+										!result.interrupted &&
+										!result.timedOut
+									) {
+										database
+											.prepare(
+												"UPDATE chats SET browser_target=? WHERE id=? AND browser_target IS ?",
+											)
+											.run(
+												JSON.stringify(connection.target),
+												id,
+												previousTarget ? JSON.stringify(previousTarget) : null,
+											);
+									}
 									try {
 										database
 											.prepare(
 												"UPDATE tool_calls SET command_state=? WHERE id=?",
 											)
-											.run(JSON.stringify(result), toolId);
+											.run(
+												JSON.stringify({
+													...result,
+													...(connection
+														? {
+																browserTarget: connection.target,
+																chatBrowserTarget: browserTarget(id),
+															}
+														: {}),
+												}),
+												toolId,
+											);
 										notifyAgent(id, agentId);
 									} catch (error) {
 										unsavedTools.add(toolId);
@@ -1385,6 +1452,7 @@ export function createServer(
 											: "failed",
 								result: JSON.stringify({
 									tool_call_id: toolId,
+									...(connection ? { browserTarget: connection.target } : {}),
 									...result,
 									output,
 								}),
@@ -2665,6 +2733,7 @@ export function createServer(
 					...page,
 					messages: agentMessages(page.agents),
 					chatOptions: chatOptions(id),
+					browserTarget: browserTarget(id),
 					queue: queues.get(id) ?? [],
 					busy: busy.has(id) || steering.has(id),
 				});

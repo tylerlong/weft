@@ -77,7 +77,7 @@ test("running command card manually refreshes saved streams without a model call
 	}
 });
 
-for (const name of ["exec_command", "apply_patch"]) {
+for (const name of ["exec_command", "apply_patch", "browser_connect"]) {
 	test(`credential values do not hide the ${name} Command Output refresh control`, async ({
 		page,
 		app,
@@ -118,7 +118,10 @@ for (const name of ["exec_command", "apply_patch"]) {
 						type: "function_call",
 						name,
 						call_id: "probe",
-						arguments: "{}",
+						arguments:
+							name === "browser_connect"
+								? JSON.stringify({ profile: "../invalid" })
+								: "{}",
 					},
 				],
 			}),

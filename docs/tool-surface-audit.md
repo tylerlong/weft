@@ -14,6 +14,7 @@
 
 | 工具 | 实际来源与当前行为 | 差异与处理建议 |
 | --- | --- | --- |
+| `browser_connect` | `src/command-tools.ts` 定义，`src/browser-tools.ts` 复用固定上游 profile 发现，`src/server.ts` 通过同一 CommandExecutor 执行官方 CLI attach。 | 仅接通 Chat 个人目标；channel／profile／user_data_dir 可显式指定，成功连接才保存，后续 Root／Sub-agent 继承。`change_target` 只用于用户明确换目标；旧连接结果仍记录原实际目标，不覆盖并发新选择。页面动作仍完整使用上游 CLI。 |
 | `exec_command` | `src/command-tools.ts` 定义；`src/server.ts` 校验并调用 `CommandExecutor`；复用固定 `@openai/codex@0.162.0` 的 `exec-server`。 | 支持 `cmd/workdir`、`shell/login/tty/yield_time_ms/max_output_tokens`。默认交互模式；`session_id` 仅能由所属 Agent 使用。旧 `command/cwd/timeout_ms` 兼容为 OneShot，timeout 不能与 tty/yield 混用。 |
 | `read_tool_output` | 读取 SQLite 中归属当前 Agent 的实际命令日志，通过行迭代器有界分页；保留 stdout/stderr/pty 顺序和 JavaScript 字符串偏移。 | 总字符数仍扫描全部行，模型侧仅保留当前行和请求页；完整日志 UI／API 显式收集为完整有序数组。不是上游 `process/read` 的替代品：后者读取有限期进程缓冲，前者读取持久历史。完整解码文本、流标签和顺序持久保存，不另存原始字节／base64；无效或未完成 UTF-8 字节显示替换字符。 |
 | `read_file` | `fs/open` → `fs/readBlock` → `fs/close`；按完整行读取严格解码的文本，只返回 `path/text/encoding/next_line`，默认 2,000 行且最多 51,200 UTF-8 字节。 | Weft 自己的文本契约，不是被简化的同名上游模型工具。仅接受绝对 `path`、正安全整数 `start_line`（默认 1）与 `max_lines`（默认 2,000）；旧字节参数和未知字段报错。原生字节 RPC 与图片所需 base64 仍保留，图片使用 `read_image`。 |
@@ -21,7 +22,7 @@
 | `create_sub_agent` | Weft 自己的 Agent 执行核心；支持明确背景、模型和 reasoning 覆盖，立即返回身份，终态主动通知父任务。 | 不是 Codex spawn-agent 工具的包装。上下文不自动继承、通知和等待规则是 ADR 0002 已确定的产品行为，不是第三方参数被删。没有依据为“直接 expose”而更换调度框架。 |
 | `cancel_sub_agent` | Weft 自己的取消逻辑；父模型可取消直接子树，等待清理并返回实际结果。 | 不是上游工具包装。保留归属校验、部分结果和真实取消事实。 |
 
-工具注册见 `src/openrouter.ts`、`src/command-tools.ts` 和 `src/file-tools.ts`；命令、文件和子 Agent 分派见 `src/server.ts`。未发现额外隐藏注册的 MCP 或浏览器 function tools。
+工具注册见 `src/openrouter.ts`、`src/command-tools.ts` 和 `src/file-tools.ts`；命令、文件和子 Agent 分派见 `src/server.ts`。MCP 工具来自服务发现；浏览器只增加连接归属用 `browser_connect`，不另建页面动作 function tools。
 
 ## read_file 文本分页
 

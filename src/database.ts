@@ -79,7 +79,7 @@ export function openDatabase(path: string, createDefaultDirectory: boolean) {
 				db.exec(`
                 CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT NOT NULL CHECK(length(trim(name)) > 0), created_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)));
                 CREATE TABLE folders (project_id INTEGER NOT NULL REFERENCES projects(id), path TEXT NOT NULL, PRIMARY KEY(project_id,path));
-                CREATE TABLE chats (id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id), name TEXT NOT NULL CHECK(length(trim(name)) > 0), created_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)), model_id TEXT REFERENCES managed_models(id) ON DELETE SET NULL, reasoning_effort TEXT);
+                CREATE TABLE chats (id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id), name TEXT NOT NULL CHECK(length(trim(name)) > 0), created_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)), model_id TEXT REFERENCES managed_models(id) ON DELETE SET NULL, reasoning_effort TEXT, browser_target TEXT CHECK(browser_target IS NULL OR json_valid(browser_target)));
                 CREATE TABLE agents (id INTEGER PRIMARY KEY, chat_id INTEGER REFERENCES chats(id), prompt TEXT, images TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(images) AND json_type(images)='array'), created_by_tool_call_id INTEGER UNIQUE REFERENCES tool_calls(id), status TEXT NOT NULL CHECK(status IN ('pending','succeeded','failed','cancelled')), created_at INTEGER NOT NULL, error_code TEXT, mcp_connections TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(mcp_connections)), CHECK((chat_id IS NOT NULL AND prompt IS NOT NULL AND created_by_tool_call_id IS NULL) OR (chat_id IS NULL AND prompt IS NULL AND created_by_tool_call_id IS NOT NULL)));
                 CREATE TABLE model_calls (id INTEGER PRIMARY KEY, agent_id INTEGER NOT NULL REFERENCES agents(id), url TEXT NOT NULL, method TEXT NOT NULL, requested_at TEXT NOT NULL, request_body TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('pending','succeeded','failed')), http_status INTEGER, response_body TEXT, duration_ms INTEGER, error TEXT, error_code TEXT, output_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(output_json) AND json_type(output_json)='array'));
                 CREATE TABLE managed_models (id TEXT PRIMARY KEY CHECK(length(trim(id))>0), name TEXT NOT NULL, metadata TEXT NOT NULL CHECK(json_valid(metadata)));
@@ -87,7 +87,7 @@ export function openDatabase(path: string, createDefaultDirectory: boolean) {
                 CREATE TABLE tool_output (tool_call_id INTEGER NOT NULL REFERENCES tool_calls(id), ordinal INTEGER NOT NULL, stream TEXT NOT NULL CHECK(stream IN ('stdout','stderr','pty')), text TEXT NOT NULL, PRIMARY KEY(tool_call_id,ordinal));
                 CREATE TABLE settings (id INTEGER PRIMARY KEY CHECK(id=1), sidebar_width REAL NOT NULL DEFAULT 320 CHECK(sidebar_width BETWEEN 240 AND 600), language TEXT NOT NULL DEFAULT 'en' CHECK(language IN ('en','zh-CN')), mcp_services TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(mcp_services)), api_key TEXT, default_model_id TEXT REFERENCES managed_models(id) ON DELETE SET NULL, enter_behavior TEXT NOT NULL DEFAULT 'send' CHECK(enter_behavior IN ('send','newline')), follow_up_behavior TEXT NOT NULL DEFAULT 'queue' CHECK(follow_up_behavior IN ('queue','steer')), model_call_limit INTEGER NOT NULL DEFAULT 16 CHECK(typeof(model_call_limit)='integer' AND model_call_limit>0), sub_agent_limit INTEGER NOT NULL DEFAULT 32 CHECK(typeof(sub_agent_limit)='integer' AND sub_agent_limit>0), safety_review INTEGER NOT NULL DEFAULT 1 CHECK(safety_review IN (0,1)));
                 INSERT INTO settings(id) VALUES(1);
-                PRAGMA user_version=26;
+                PRAGMA user_version=27;
                 COMMIT;
             `);
 			} catch (error) {
@@ -95,7 +95,7 @@ export function openDatabase(path: string, createDefaultDirectory: boolean) {
 				throw error;
 			}
 		} else if (
-			version !== 26 ||
+			version !== 27 ||
 			tables.join(",") !==
 				"agents,chats,folders,managed_models,model_calls,projects,settings,tool_calls,tool_output"
 		) {
@@ -110,7 +110,8 @@ export function openDatabase(path: string, createDefaultDirectory: boolean) {
 		for (const [table, expected] of Object.entries({
 			projects: "id,name,created_at,archived",
 			folders: "project_id,path",
-			chats: "id,project_id,name,created_at,archived,model_id,reasoning_effort",
+			chats:
+				"id,project_id,name,created_at,archived,model_id,reasoning_effort,browser_target",
 			agents:
 				"id,chat_id,prompt,images,created_by_tool_call_id,status,created_at,error_code,mcp_connections",
 			model_calls:

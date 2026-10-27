@@ -1,6 +1,30 @@
 export const commandTools = [
 	{
 		type: "function",
+		name: "browser_connect",
+		description:
+			"Connect this Agent's independent CLI session to the Chat personal Chrome/Edge target through the official extension. First connection uses upstream channel/profile discovery unless specified; only a successful attach saves the target. Later calls reuse it. Set change_target only for an explicit user request to change browser/profile. Existing Agents keep their own actual connection. Returns ordinary command output/session_id; poll with write_stdin. Use playwright-cli -s=weft-personal for all subsequent upstream actions and detach, omitting workdir or using Agent scratch; use other CLI sessions for temporary browsing, which does not change this target.",
+		parameters: {
+			type: "object",
+			properties: {
+				channel: { type: "string" },
+				profile: {
+					type: "string",
+					description:
+						"Upstream profile directory name, e.g. Default or Profile 2",
+				},
+				user_data_dir: {
+					type: "string",
+					description:
+						"Explicit upstream user-data directory; otherwise upstream host default",
+				},
+				change_target: { type: "boolean", default: false },
+			},
+			additionalProperties: false,
+		},
+	},
+	{
+		type: "function",
 		name: "exec_command",
 		description:
 			"Run a command as the current system user. Defaults to interactive yield (10000ms), returning session_id if still running; continue with write_stdin. tty enables stdin; non-PTY only supports Ctrl-C. Explicit timeout_ms selects legacy OneShot: waits to completion, terminates on timeout, cannot resume. Do not combine timeout_ms with tty/yield_time_ms. No automatic replay. Full output is saved under tool_call_id; read_tool_output continues history. max_output_tokens budgets returned text using 4 characters/token, without deleting logs.",

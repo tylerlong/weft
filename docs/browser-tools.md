@@ -38,7 +38,40 @@ browser without an extension or website login. Upstream `--persistent`,
 forwards every argument. The model chooses an operation according to the task,
 not a local public/private website classifier.
 
-To reuse an existing personal login, use the official extension:
+To reuse an existing personal login with a stable Chat target, call
+`browser_connect` with an optional `channel` (for example `msedge` or `chrome`),
+`profile` (the upstream directory name), and `user_data_dir` (an explicit upstream
+user-data root). Omitted values reuse this Chat's saved target; the first call
+uses the upstream host channel/profile defaults and official extension discovery.
+Only an actual successful attach saves `{channel, userDataDir, profile}` on the
+Chat. An installation record or pending authorization does not bind it.
+
+The result is a normal recorded command: poll a running `session_id` with
+`write_stdin`. Its `browserTarget` identifies the actual connection attempt.
+Then use `playwright-cli -s=weft-personal` for the complete upstream action
+interface, omitting `workdir` or using the Agent scratch directory so the CLI
+finds that Agent's session. Detach when done. Each Root/Sub-agent has its own
+scratch registry and connection even when the Chat target is the same.
+
+The saved target appears in every model request and in `GET /api/chats/:id` as
+`browserTarget`. Subsequent Roots, Sub-agents and service restarts reuse its
+exact profile, without rerunning recent-profile selection. A restart preserves
+the identity, not the old connection or operation: explicitly reconnect and
+observe the current page. A failed connection does not clear or replace it.
+
+Only an explicit user request warrants `change_target: true` together with the
+new channel/profile. Existing Agents keep their actual connections; their
+recorded attempt/state continues to identify that target. A connection that
+finishes after another Agent changed the Chat target cannot overwrite the newer
+choice. Future connections use the new target. Temporary CLI sessions work
+before or after personal selection and never set or overwrite the Chat target.
+
+The raw CLI remains available for all upstream parameters, custom executable,
+persistent-profile and CDP operations. Raw CLI attachment is lower-level and does
+not update the tracked Chat target. `browser_connect` requires a standard channel
+installation and rejects an inherited `PLAYWRIGHT_MCP_EXECUTABLE_PATH` override
+rather than mislabel a custom executable as that channel's installed browser. For example, single-Agent extension use is:
+
 
 ```sh
 playwright-cli -s=personal attach --extension=msedge
@@ -76,11 +109,10 @@ connection; do not close the whole user browser, clear its profile or sign out.
 Close only pages owned by this task. Independently created temporary browsers
 still use `close` as documented upstream.
 
-This initial delivery (#187 of [#186](https://github.com/tylerlong/weft/issues/186))
-connects a single Agent. Stable Chat targets, subsequent Root/Sub-agent
-inheritance, complete manual handoff and concurrent cancellation/page ownership
-acceptance are subsequent tickets; they are not established by successful login
-reuse. Shared browser Cookies and website account state are not isolated by tabs.
+#187 and #188 of [#186](https://github.com/tylerlong/weft/issues/186) provide
+single-Agent extension access and saved Chat target inheritance. Complete manual
+handoff and concurrent cancellation/page ownership acceptance remain subsequent
+tickets; they are not established by target persistence. Shared browser Cookies and website account state are not isolated by tabs.
 
 ## Execution and validation
 
@@ -152,3 +184,26 @@ manual SMS/system verification, target inheritance, or service-restart recovery.
 - [Codex 0.162.0 process sandbox preparation](https://github.com/openai/codex/blob/rust-v0.162.0/codex-rs/exec-server/src/process_sandbox.rs)
 - [Codex 0.162.0 sandbox selection](https://github.com/openai/codex/blob/rust-v0.162.0/codex-rs/exec-server/src/sandbox_selection.rs)
 - [Codex 0.162.0 sandbox manager](https://github.com/openai/codex/blob/rust-v0.162.0/codex-rs/sandboxing/src/manager.rs)
+
+### Chat target acceptance (#188)
+
+`WEFT_TEST_EXTENSION_CHANNEL=msedge node --test test/browser-target-extension.test.ts`
+runs the opt-in HTTP → model fixture → real CLI/extension target scenario. Only
+its localhost page is selected in ordinary extension approval; no extension
+token is configured and no real account state is changed. It covers temporary
+browsing before/after selection, later Roots, a Sub-agent, service restart,
+implicit-change rejection, explicit browser change and independent Chats. It also
+holds an old Sub-agent connection pending while the Root changes targets, then
+confirms that the late connection retains its actual old target without replacing
+the new Chat target.
+The follow-up supplies a conflicting upstream default-profile environment value
+while the saved target still connects. A separate discovery-only test uses
+synthetic extension installation records and a changed `Local State` recent
+profile to establish that upstream initial discovery changes while an already
+selected target stays pinned. Those records do not simulate a successful
+extension connection. Real-browser behavior and fixture model decisions are
+separate evidence; no paid model was used.
+
+Chat targets add schema version 27. In accordance with ADR 0001, unsupported
+older databases are rejected and preserved, without automatic migration or
+rebuilding. Validation uses a disposable test database, not the user's database.

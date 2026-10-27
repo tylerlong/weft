@@ -1017,6 +1017,7 @@ commandTest(
 					body.tools.map((tool: { name: string }) => tool.name).sort(),
 					[
 						"apply_patch",
+						"browser_connect",
 						"cancel_sub_agent",
 						"create_sub_agent",
 						"exec_command",

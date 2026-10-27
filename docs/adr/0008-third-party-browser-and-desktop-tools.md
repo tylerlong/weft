@@ -16,4 +16,4 @@
 
 普通命令统一使用 [ADR 0004](0004-command-tool-isolation-boundary.md) 的 Full Access 无沙箱路径，浏览器无需额外模式或授权。保留受控本机网站经 HTTP → 模型 fixture → 原生命令／官方 CLI 的诊断、截图、trace 与关闭回归；不再运行会制造 Chrome abort 的受限模式启动。具体版本、前提及验证边界见[浏览器工具](../browser-tools.md)。
 
-个人浏览器接入规格见 [#186](https://github.com/tylerlong/weft/issues/186)。首个子票 #187 接通单 Agent 的 Chrome／Edge 官方扩展路径，沿用上游初次 browser／profile 选择；不要求临时浏览安装扩展或登录。真实连接及受控站点登录复用证据见[浏览器工具](../browser-tools.md)。Chat 固定目标、后续 Root／Sub-agent 继承、人工交接与并发归属属于后续子票，不从 Cookie 持久化推断这些行为已交付。
+个人浏览器接入规格见 [#186](https://github.com/tylerlong/weft/issues/186)。首个子票 #187 接通单 Agent 的 Chrome／Edge 官方扩展路径，沿用上游初次 browser／profile 选择；不要求临时浏览安装扩展或登录。真实连接及受控站点登录复用证据见[浏览器工具](../browser-tools.md)。#188 增加连接专用 `browser_connect` 工具：复用固定上游 profile 发现，以结构化 channel／profile／user-data root 参数建立独立 CLI 扩展连接，成功后在 Chat 保存最小目标身份；不解析普通 shell 文本，不复制页面动作接口，原始 CLI 全部能力仍可使用。后续 Root／Sub-agent 与重启后重连使用保存的同一目标；临时浏览不读写个人目标。只有用户明确要求才设置 `change_target`，已有连接继续记录原来的实际目标；比较连接开始时的 Chat 目标再保存，迟到连接不覆盖并发变更。选择目标与网站登录仍由模型按任务判断，保存身份不表示连接保活或登录有效。新增 Chat 字段沿用 ADR 0001 的单一 schema／保留不兼容数据库规则，不自动迁移或重建。人工交接与并发页面归属的完整验收仍属于后续子票，不从 Cookie 持久化推断已交付。
