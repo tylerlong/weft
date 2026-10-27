@@ -1381,6 +1381,7 @@ export function createServer(
 								shell: value.shell,
 								login: value.login,
 								toolCallId: toolId,
+								interruptBeforeTerminate: !!connection,
 								onState: (result) => {
 									if (
 										connection &&

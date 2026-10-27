@@ -61,6 +61,7 @@ type Execution = {
 	shell?: string;
 	login?: boolean;
 	toolCallId?: number;
+	interruptBeforeTerminate?: boolean;
 	onState?: (result: ExecutionResult) => void;
 	signal: AbortSignal;
 	onOutput: (stream: Stream, text: string) => void;
@@ -346,6 +347,7 @@ export class CommandExecutor {
 
 	async execute(options: Execution): Promise<ExecutionResult> {
 		let proc: Running | undefined;
+		let stopping: Promise<void> | undefined;
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		let abort: (() => void) | undefined;
 		const interactive = options.timeoutMs === undefined;
@@ -380,9 +382,30 @@ export class CommandExecutor {
 				completed,
 				cancelled: false,
 				timedOut: false,
-				stop: async () => {
-					if (!proc?.closed) await this.rpc("process/terminate", { processId });
-				},
+				stop: () =>
+					(stopping ??= (async () => {
+						if (proc?.closed) return;
+						if (options.interruptBeforeTerminate) {
+							// Let CLI startup handlers release detached children before forced termination.
+							await this.rpc("process/signal", {
+								processId,
+								signal: "interrupt",
+							});
+							let grace: ReturnType<typeof setTimeout> | undefined;
+							try {
+								await Promise.race([
+									completed,
+									new Promise<void>((resolve) => {
+										grace = setTimeout(resolve, 1000);
+									}),
+								]);
+							} finally {
+								clearTimeout(grace);
+							}
+						}
+						if (!proc?.closed)
+							await this.rpc("process/terminate", { processId });
+					})()),
 				cleanup: () => {
 					clearTimeout(timer);
 					if (abort) options.signal.removeEventListener("abort", abort);
@@ -611,8 +634,10 @@ export class CommandExecutor {
 		);
 		for (const [sessionId, processId] of this.sessions)
 			if (!this.processes.has(processId)) this.sessions.delete(sessionId);
-		await closeBrowserSessions(agentScratch(agentId));
-		this.agents.delete(agentId);
+		if (this.agents.has(agentId)) {
+			await closeBrowserSessions(agentScratch(agentId));
+			this.agents.delete(agentId);
+		}
 	}
 
 	async close() {
