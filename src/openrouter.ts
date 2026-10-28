@@ -270,6 +270,9 @@ export async function requestModel(
 		for (const [index, call] of response.tools.entries()) {
 			loop?.signal?.throwIfAborted();
 			record?.toolStarted?.(index + 1);
+			const toolConfig =
+				loop?.reviewConfig?.() ??
+				(typeof config === "function" ? config() : config);
 			const persistReview = (save: () => void) => {
 				try {
 					save();
@@ -281,9 +284,6 @@ export async function requestModel(
 				}
 			};
 			const review: ToolReview = async (operation) => {
-				const toolConfig =
-					loop?.reviewConfig?.() ??
-					(typeof config === "function" ? config() : config);
 				if (toolConfig?.safetyReview === false) return;
 				for (const secret of toolConfig?.secrets ?? []) usedSecrets.add(secret);
 				if (toolConfig?.apiKey) {
@@ -301,6 +301,10 @@ export async function requestModel(
 					},
 					{
 						...toolConfig,
+						providerRouting: (
+							loop?.reviewConfig?.() ??
+							(typeof config === "function" ? config() : config)
+						)?.providerRouting,
 						apiKey: toolConfig?.apiKey ?? "",
 						model: "~typesafe/jev-latest",
 						reasoningEffort: null,

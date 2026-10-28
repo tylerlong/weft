@@ -424,16 +424,18 @@ test("Root Agents and Sub-agents with inherited or overridden models use the cur
 	}
 });
 
-test("multiple Safety Reviews within one tool read routing at each actual request without exposing arbitrary provider content", async () => {
+test("multiple Safety Reviews within one tool refresh routing but retain their starting safety setting and redact arbitrary content", async () => {
 	const entered = gate();
 	const released = gate();
 	let priority: "price" | "latency" = "price";
+	let safetyReview = true;
 	const sent: { url: string; body: Record<string, unknown> }[] = [];
 	const recorded: Record<string, unknown>[] = [];
 	const config = () => ({
 		apiKey: "sort",
 		model: "root-model",
 		providerRouting: priority,
+		safetyReview,
 	});
 	const pending = requestModel(
 		[],
@@ -477,6 +479,7 @@ test("multiple Safety Reviews within one tool read routing at each actual reques
 	try {
 		await entered.promise;
 		priority = "latency";
+		safetyReview = false;
 		released.release();
 		assert.equal(await pending, "Done");
 		assert.deepEqual(
