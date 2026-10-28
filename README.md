@@ -35,6 +35,29 @@ While a Chat is running, the send menu offers **Queue** to save the next message
 
 Stop with **Ctrl+C**. The default port is 3000; use `pnpm start --port 3001` to change it. Startup stops existing listeners on the selected port, so choose an unused port.
 
+## Local desktop app (macOS Apple Silicon)
+
+From this checkout, with Node.js 24+ and pnpm 11 installed:
+
+```sh
+pnpm install
+pnpm desktop:build
+# Or build and open only after a successful build:
+pnpm desktop:start
+```
+
+The output is `desktop-output/Weft.app`. Open it from Finder after building; it includes Electron, a checksum-verified standalone Node 24.21.0 runtime, the current UI/backend, production dependencies, Codex/ripgrep and Playwright code/CLI/skill. The first build downloads runtimes. Generated applications, staging and runtime caches are ignored by Git. Only macOS arm64 builds are supported; there are no public releases, installers, automatic updates, Developer ID signing or notarization.
+
+Each app is a snapshot of the checkout, including local edits. Rebuild to apply changes; Finder launch does not compile or watch source. Both commands refuse while the Weft desktop app is running, including with its window closed: **Quit Weft and build again.** They never stop the app or its Agents. A failed build preserves the last successful app, and `desktop:start` does not open stale output.
+
+The built app needs neither the checkout, pnpm nor a separate Node installation. Configure models in its existing Settings interface. Git, project runtimes/package managers, Docker and external MCP services remain user prerequisites; Chrome/Edge are optional browser-task prerequisites. Finder development-PATH recovery and installed-browser acceptance are being completed in [#200](https://github.com/tylerlong/weft/issues/200).
+
+Desktop data lives in `~/Library/Application Support/Weft/weft.sqlite`, separately from `data/weft.sqlite` in the checkout. It starts fresh and persists across app restarts and rebuilds. It includes unencrypted settings/API keys; keep it private. The app does not import, move, reset or delete checkout data. An incompatible schema fails startup while preserving the database; use a compatible build and retain the old data for its records.
+
+Closing the window leaves the app/backend running. Dock activation or launching the app again opens/focuses that instance. Idle Quit waits for existing server, tool and database cleanup. Active-work/queued-input Quit confirmation and the complete failure-path checks remain [#201](https://github.com/tylerlong/weft/issues/201); until that lands, Quit stops work without confirmation and loses unstarted queued input. See [the packaging evidence and limits](docs/desktop-packaging-check.md).
+
+Run `pnpm test:desktop` on a Mac with a graphical login session for the local packaged-app checks. They build the app, use disposable copies and private temporary data, inject local model HTTP fixtures and run real native commands. They do not use your desktop or checkout database. Existing unit/native and frontend checks remain `pnpm test` and `pnpm test:e2e`.
+
 ## Skills
 
 Install standard `SKILL.md` skills in `~/.agents/skills` or project `.agents/skills` directories. Within a Git repository, discovery includes the directories from the repository root to each Target Folder; outside Git, it checks the Target itself. Same-name skills retain their individual source paths.
@@ -85,7 +108,7 @@ Initial instruction discovery follows its named sources and reports read errors;
 
 `data/weft.sqlite` stores history, settings, and your **unencrypted API key**. Keep it private. To use another database, run `pnpm start --db /absolute/path/to/chat.sqlite`; its parent directory must already exist and be private to your user (for example, permissions `0700`).
 
-Chat personal browser targets require schema version 27. Unsupported databases are rejected without deletion or automatic migration. If an update requires a new database, use a fresh path and keep the old database for its records.
+The current database schema version is 28, including Chat personal browser targets and provider routing. Unsupported databases are rejected without deletion or automatic migration. If an update requires a new database, use a fresh path and keep the old database for its records.
 
 ### Command sessions
 

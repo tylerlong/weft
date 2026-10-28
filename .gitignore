@@ -4,3 +4,4 @@ dist/
 data/
 playwright-report/
 test-results/
+desktop-output/

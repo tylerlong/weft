@@ -69,3 +69,45 @@ database, process inventories and shutdown assertions. Generated runtimes and
 dependencies are omitted from that archive; the disposable built app remains in
 the probe's temporary directory. The archive's packaging recipe was captured for
 reproduction; a fresh rebuild from the archive was not repeated.
+
+## Implementation slice #199 (2026-10-28)
+
+`pnpm desktop:build` and `pnpm desktop:start` now build the local macOS arm64
+snapshot into ignored `desktop-output/Weft.app`. The implementation uses pinned
+Electron 45.0.0, `@electron/packager` 20.3.0 and standalone Node 24.21.0; Node
+archives are checked against the vendor's HTTPS `SHASUMS256.txt`. The production
+resource tree is installed from the lockfile, its relative links are restored
+and every final bundle link is checked to resolve inside the app. pnpm's local
+installation metadata is removed. Runtime imports are exercised with staging
+renamed unavailable and a minimal PATH before the previous app is replaced.
+
+The committed `pnpm test:desktop` checks use a disposable relocated copy with
+spaces in its path, private fixture application-data storage and local HTTP model
+responses injected through the existing server constructor. Native commands,
+SQLite, HTTP authorization, Electron and cleanup are real. The main acceptance
+check has passed with:
+- Bundled Node and ripgrep through the HTTP → Agent → Tool Call path; the command
+  sees the bundled Node executable and no management-token environment variable.
+- Authorized UI/API access and rejection without management authority; renderer
+  Node access is absent. The ordinary server entry remains unchanged.
+- Both build commands refusing a live app with its window open and closed,
+  leaving the output and the same HTTP backend intact. An actual native command
+  is observed ready and remains live throughout every refusal and window close.
+- A subsequent executable launch reopening the existing instance, Dock activation,
+  idle Quit closing the listener, reopen preserving Projects, and private storage
+  permissions (`0700` directory, `0600` database) with SQLite integrity `ok`.
+- A cold LaunchServices launch from outside the checkout, parent PID 1 and cwd
+  `/`, becoming usable through the packaged UI and quitting cleanly.
+- An invalid current frontend build preserving the previous successful app and
+  making `desktop:start` fail; a backend source edit appearing only after rebuild.
+
+The suite also checks the bundled production backend's incompatible-schema
+failure without changing the database bytes and unsupported-host refusal before
+output changes. No custom running marker exists: live bundle identity comes from
+macOS `NSRunningApplication`; stale files alone cannot authorize an app match.
+
+This slice does not complete Finder login-shell PATH recovery or installed-browser
+acceptance (#200), active/queued Quit confirmation or all startup/crash feedback
+(#201), or the final integrated acceptance (#202). It does not resolve #193's
+separate cancellation race. No paid calls, personal browser state, real Weft data,
+public distribution, signing/notarization or clean-machine checks were used.

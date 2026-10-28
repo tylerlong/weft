@@ -14,6 +14,7 @@
 		"src/**/*.tsx",
 		"test/**/*.ts",
 		"vite.config.ts",
-		"playwright.config.ts"
+		"playwright.config.ts",
+		"desktop/**/*.ts"
 	]
 }
