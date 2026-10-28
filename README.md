@@ -20,6 +20,17 @@ Open the management URL printed in the terminal. Keep it private: it authorizes 
 2. Create a **Project** and select folders on the machine running the service.
 3. Create a **Chat**, choose a model and reasoning level, and submit a task.
 
+**Settings → Models → Provider routing** saves one global preference for every model and Chat, including Root Agents, Sub-agents using other models, and Safety Review:
+
+| Choice                       | Priority                                                            |
+| ---------------------------- | ------------------------------------------------------------------- |
+| OpenRouter default (initial) | Let OpenRouter manage routing; send no explicit sorting preference. |
+| Lowest price                 | Favor cheaper providers of the selected model.                      |
+| Highest throughput           | Favor faster token generation.                                      |
+| Lowest latency               | Favor earlier response startup.                                     |
+
+Changes apply to the next model request, including in running tasks; requests already sent and their recorded configuration stay unchanged. The choice persists across reloads and supported-database restarts. It expresses a priority, without excluding providers, setting spending limits, guaranteeing performance, changing the model or overriding OpenRouter’s fallback behavior. These controls save automatically; save failures show an error and Close retries the failed change.
+
 While a Chat is running, the send menu offers **Queue** to save the next message, or **Steer** to stop the current Root and its descendants, wait for cleanup, and start the new message ahead of the queue. **Settings → General → Follow-up behavior** saves the global default (Queue initially); a send-menu choice applies once. Idle Chats show **Send**. Steer starts a separate Root with the interrupted task’s history, just like Stop followed by Send. View or remove pending messages near the composer. Success starts the next message after cleanup; failure, Stop or an execution limit leaves the queue waiting. **Continue queue** or a new Send resumes the chain. Pending messages survive browser refresh but are lost when the service restarts, including watch restarts.
 
 Stop with **Ctrl+C**. The default port is 3000; use `pnpm start --port 3001` to change it. Startup stops existing listeners on the selected port, so choose an unused port.

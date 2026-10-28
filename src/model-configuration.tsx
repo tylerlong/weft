@@ -133,12 +133,17 @@ export function ModelConfiguration({
 	function mutate(
 		path: string,
 		method: string,
-		body?: { defaultModelId: string },
+		body?: {
+			defaultModelId?: string;
+			providerRouting?: ModelSettings["providerRouting"];
+		},
 	) {
 		if (saving.current) return modelSave.current;
 		saving.current = true;
 		setPending(true);
-		modelRetries.current.delete(path);
+		const retryKey =
+			body?.providerRouting !== undefined ? `${path}/provider-routing` : path;
+		modelRetries.current.delete(retryKey);
 		reportModelFailures();
 		const operation = (async () => {
 			try {
@@ -156,7 +161,7 @@ export function ModelConfiguration({
 				await refresh();
 				return true;
 			} catch (cause) {
-				modelRetries.current.set(path, {
+				modelRetries.current.set(retryKey, {
 					retry: () => mutate(path, method, body),
 					defaultModelId: body?.defaultModelId,
 					error:
@@ -496,6 +501,35 @@ export function ModelConfiguration({
 					>
 						<h3 className="font-semibold">{t("modelConfiguration")}</h3>
 						<p className="mt-2 text-sm text-neutral-600">{t("modelsHelp")}</p>
+						<label className="mt-4 block">
+							<span className="font-semibold">{t("providerRouting")}</span>
+							<select
+								className={input}
+								value={settings.providerRouting}
+								disabled={pending}
+								aria-describedby="provider-routing-help"
+								onChange={(event) =>
+									void mutate("/api/model-settings", "PUT", {
+										providerRouting: event.target
+											.value as ModelSettings["providerRouting"],
+									})
+								}
+							>
+								{["default", "price", "throughput", "latency"].map(
+									(priority) => (
+										<option key={priority} value={priority}>
+											{t(`providerRouting_${priority}`)}
+										</option>
+									),
+								)}
+							</select>
+						</label>
+						<p
+							id="provider-routing-help"
+							className="mt-2 text-sm text-neutral-600"
+						>
+							{t("providerRoutingHelp")}
+						</p>
 						{settings.models.length === 0 && (
 							<p className="mt-4 text-neutral-600">{t("noConfiguredModels")}</p>
 						)}

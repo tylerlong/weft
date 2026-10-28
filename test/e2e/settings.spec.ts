@@ -129,6 +129,106 @@ for (const chinese of [false, true]) {
 		expect(writes).toBe(2);
 	});
 
+	test(`provider routing saves all priorities, supports keyboard and recovers from failure (${chinese ? "zh" : "en"})`, async ({
+		page,
+		app,
+	}) => {
+		const label = chinese ? "服务方路由" : "Provider routing";
+		const choices = chinese
+			? ["OpenRouter 默认", "最低价格", "最高吞吐量", "最低延迟"]
+			: [
+					"OpenRouter default",
+					"Lowest price",
+					"Highest throughput",
+					"Lowest latency",
+				];
+		if (chinese)
+			await page.request.put(`${app.url}/api/language`, {
+				data: { language: "zh-CN" },
+			});
+		const openModels = async () => {
+			await page
+				.getByRole("button", { name: words.settings, exact: true })
+				.click();
+			await page.getByRole("tab", { name: words.models, exact: true }).click();
+		};
+		await page.request.post(`${app.url}/api/model-catalog`);
+		await page.request.post(`${app.url}/api/models`, {
+			data: { id: "second" },
+		});
+		await page.goto(app.url);
+		await openModels();
+		const dialog = page.getByRole("dialog", {
+			name: words.settings,
+			exact: true,
+		});
+		const routing = dialog.getByRole("combobox", { name: label, exact: true });
+		await expect(routing).toHaveValue("default");
+		await expect(routing.getByRole("option")).toHaveText(choices);
+		await expect(routing).toHaveAccessibleDescription(
+			chinese
+				? /吞吐量.*生成.*延迟.*开始响应/
+				: /throughput.*token generation.*latency.*response startup/,
+		);
+		const savedRouting = async () =>
+			(await (await page.request.get(`${app.url}/api/model-settings`)).json())
+				.providerRouting;
+		for (const priority of ["price", "throughput", "latency"]) {
+			await expect(routing).toBeEnabled();
+			await routing.selectOption(priority);
+			await expect.poll(savedRouting).toBe(priority);
+			await expect(routing).toHaveValue(priority);
+		}
+		await page.reload();
+		await openModels();
+		await expect(routing).toHaveValue("latency");
+		await routing.focus();
+		await expect(routing).toBeFocused();
+		await routing.press("o");
+		await routing.press("Enter");
+		await expect.poll(savedRouting).toBe("default");
+		await expect(routing).toHaveValue("default");
+		const fail = async (route: import("@playwright/test").Route) => {
+			if (route.request().method() === "PUT")
+				await route.fulfill({ status: 500, json: {} });
+			else await route.continue();
+		};
+		await page.route("**/api/model-settings", fail);
+		await routing.selectOption("price");
+		await expect(dialog.getByRole("alert")).toHaveText(
+			chinese
+				? "保存模型配置失败，请重试。"
+				: "Unable to save model settings. Please retry.",
+		);
+		expect(await savedRouting()).toBe("default");
+		await expect(routing).toHaveValue("default");
+		await expect(dialog.getByText(words.saved, { exact: true })).toHaveCount(0);
+		await dialog
+			.getByRole("button", {
+				name: chinese ? "将 Second 设为默认" : "Set Second as default",
+				exact: true,
+			})
+			.click();
+		await expect(dialog.getByRole("alert")).toHaveCount(1);
+		await dialog
+			.getByRole("button", { name: words.close, exact: true })
+			.click();
+		await expect(dialog).toBeVisible();
+		await page.unroute("**/api/model-settings", fail);
+		await dialog
+			.getByRole("button", { name: words.close, exact: true })
+			.click();
+		await expect(dialog).toBeHidden();
+		expect(await savedRouting()).toBe("price");
+		expect(
+			(await (await page.request.get(`${app.url}/api/model-settings`)).json())
+				.defaultModelId,
+		).toBe("second");
+		await page.reload();
+		await openModels();
+		await expect(routing).toHaveValue("price");
+	});
+
 	test(`fixed Settings actions with long models and notices (${chinese ? "zh" : "en"})`, async ({
 		page,
 		app,

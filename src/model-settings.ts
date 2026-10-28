@@ -7,7 +7,9 @@ export type ManagedModel = {
 	inputModalities?: string[] | null;
 	reasoningRequired: boolean;
 };
+export type ProviderRouting = "default" | "price" | "throughput" | "latency";
 export type ModelSettings = {
+	providerRouting: ProviderRouting;
 	apiKeyConfigured: boolean;
 	defaultModelId: string | null;
 	models: ManagedModel[];
@@ -28,9 +30,12 @@ export function createModelSettings(
 ) {
 	function read(): ModelSettings {
 		const settings = database
-			.prepare("SELECT api_key,default_model_id FROM settings WHERE id=1")
+			.prepare(
+				"SELECT api_key,default_model_id,provider_routing FROM settings WHERE id=1",
+			)
 			.get();
 		return {
+			providerRouting: settings?.provider_routing as ProviderRouting,
 			apiKeyConfigured: !!settings?.api_key,
 			defaultModelId:
 				settings?.default_model_id === null
@@ -150,6 +155,13 @@ export function createModelSettings(
 					.get(input.defaultModelId))
 		)
 			throw new ModelSettingsError("invalidModel");
+		if (
+			Object.hasOwn(input, "providerRouting") &&
+			!["default", "price", "throughput", "latency"].includes(
+				input.providerRouting as string,
+			)
+		)
+			throw new ModelSettingsError("invalidInput");
 		database.exec("BEGIN");
 		try {
 			if (input.removeApiKey === true)
@@ -158,6 +170,10 @@ export function createModelSettings(
 				database
 					.prepare("UPDATE settings SET api_key=? WHERE id=1")
 					.run(input.apiKey.trim() || null);
+			if (input.providerRouting !== undefined)
+				database
+					.prepare("UPDATE settings SET provider_routing=? WHERE id=1")
+					.run(input.providerRouting as ProviderRouting);
 			if (input.defaultModelId !== undefined)
 				database
 					.prepare("UPDATE settings SET default_model_id=? WHERE id=1")

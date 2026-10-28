@@ -647,7 +647,12 @@ for (const action of ["default", "removal"] as const) {
 					.getByRole("button", { name: "Cancel", exact: true })
 					.click();
 			else {
-				await dialog.getByRole("combobox").fill("Third");
+				await dialog
+					.getByRole("combobox", {
+						name: "Search models by name or ID",
+						exact: true,
+					})
+					.fill("Third");
 				await dialog
 					.getByRole("option", { name: "Third third", exact: true })
 					.click();
@@ -767,7 +772,12 @@ for (const scenario of [
 			await dialog
 				.getByRole("button", { name: "Add model", exact: true })
 				.click();
-			await dialog.getByRole("combobox").fill("Fourth");
+			await dialog
+				.getByRole("combobox", {
+					name: "Search models by name or ID",
+					exact: true,
+				})
+				.fill("Fourth");
 			await dialog
 				.getByRole("option", { name: "Fourth fourth", exact: true })
 				.click();

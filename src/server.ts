@@ -571,7 +571,7 @@ export function createServer(
 		override?: Record<string, unknown>,
 	) => {
 		let options = chatOptions(id);
-		const models = modelSettings.read().models;
+		const { models, providerRouting } = modelSettings.read();
 		const overrides: Record<string, unknown>[] = [];
 		while (agentId !== undefined) {
 			const source = agentSource(agentId);
@@ -610,6 +610,7 @@ export function createServer(
 			throw new InputError("invalidReasoning");
 		return {
 			apiKey,
+			providerRouting,
 			model: model.id,
 			inputModalities: model.inputModalities,
 			reasoningEffort: options.reasoningEffort,
@@ -1642,6 +1643,7 @@ export function createServer(
 					signal: state.controller.signal,
 					reviewConfig: () => ({
 						apiKey: String(modelSettings.readCredential()),
+						providerRouting: modelSettings.read().providerRouting,
 						secrets,
 						safetyReview:
 							database

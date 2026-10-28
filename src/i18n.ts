@@ -270,6 +270,13 @@ export const resources = {
 				"Saves when you leave this field. Clear it to remove the key.",
 			modelsHelp:
 				"Add models to make them available in chats. The default is used for new chats and chats without a model.",
+			providerRouting: "Provider routing",
+			providerRouting_default: "OpenRouter default",
+			providerRouting_price: "Lowest price",
+			providerRouting_throughput: "Highest throughput",
+			providerRouting_latency: "Lowest latency",
+			providerRoutingHelp:
+				"Default lets OpenRouter manage routing; price favors cheaper providers, throughput faster token generation, and latency earlier response startup. Applies to all models and Chats, including Sub-agents and Safety Review, from the next request. Preferences do not limit spending, exclude providers or guarantee performance.",
 			settingsAutosave: "Changes save automatically.",
 			settingsSaving: "Saving…",
 			settingsSaved: "Saved",
@@ -591,6 +598,13 @@ export const resources = {
 			apiKeyHelp: "离开此输入框时自动保存。清空可移除密钥。",
 			modelsHelp:
 				"添加的模型可在对话中选择。默认模型用于新对话，以及尚未选择模型的对话。",
+			providerRouting: "服务方路由",
+			providerRouting_default: "OpenRouter 默认",
+			providerRouting_price: "最低价格",
+			providerRouting_throughput: "最高吞吐量",
+			providerRouting_latency: "最低延迟",
+			providerRoutingHelp:
+				"默认由 OpenRouter 管理路由；价格优先较便宜的服务方，吞吐量优先更快生成 token，延迟优先更早开始响应。从下一次请求起应用于所有模型和对话，包括子 Agent 和安全审核。偏好不限制费用、不排除服务方，也不保证性能。",
 			settingsAutosave: "修改会自动保存。",
 			settingsSaving: "保存中…",
 			settingsSaved: "已保存",

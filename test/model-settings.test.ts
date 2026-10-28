@@ -88,6 +88,7 @@ test("database model metadata excludes credentials, durable anonymous lazy catal
 		assert.equal(calls, 0);
 		assert.deepEqual(await (await request("/api/model-settings")).json(), {
 			apiKeyConfigured: false,
+			providerRouting: "default",
 			defaultModelId: null,
 			models: [],
 		});
@@ -353,7 +354,7 @@ test("fresh database has empty model settings with no environment fallback", asy
 		db.exec(
 			"INSERT INTO projects(id,name,created_at) VALUES(1,'Project',1); INSERT INTO chats(id,project_id,name,created_at) VALUES(1,1,'Chat',1)",
 		);
-		assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 27);
+		assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 28);
 		assert.deepEqual(
 			{ ...db.prepare("SELECT * FROM settings").get() },
 			{
@@ -368,6 +369,7 @@ test("fresh database has empty model settings with no environment fallback", asy
 				model_call_limit: 16,
 				sub_agent_limit: 32,
 				safety_review: 1,
+				provider_routing: "default",
 			},
 		);
 		db.close();
