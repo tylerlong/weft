@@ -112,3 +112,16 @@ acceptance (#200), active/queued Quit confirmation or all startup/crash feedback
 (#201), or the final integrated acceptance (#202). It does not resolve #193's
 separate cancellation race. No paid calls, personal browser state, real Weft data,
 public distribution, signing/notarization or clean-machine checks were used.
+
+Validation for the #199 implementation: formatting and typechecking passed;
+`pnpm test:desktop` passed both packaged checks; `pnpm test:e2e` passed all 230
+frontend checks. The final `pnpm test` run passed 330 tests with six opt-in
+extension checks skipped. An earlier full run failed the existing native
+“service restart retains interrupted command chunks and never replays native
+work” check: its delayed-effect file existed unexpectedly. That exact test and
+the full suite subsequently passed without cancellation-code/assertion changes.
+The initial failure remains evidence of the separately tracked #193 race, not
+proof that this desktop work fixed it. Read-only Standards and Spec reviewers
+accepted the corrected #199 snapshot with no remaining findings; their initial
+findings produced scoped clipboard permission, staged entry validation, complete
+checkout isolation, and fixture-cleanup corrections.

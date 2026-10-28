@@ -31,6 +31,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 	const checkout = join(sandbox, "checkout");
 	await mkdir(checkout);
 	for (const name of [
+		".gitignore",
 		"src",
 		"desktop",
 		"package.json",
