@@ -30,7 +30,7 @@ export async function startBackend(
 						"Backend cleanup failed. Inspect saved command records before reopening.",
 				});
 			process.exitCode = error ? 1 : 0;
-			process.disconnect?.();
+			if (process.connected) process.disconnect();
 		});
 	};
 	process.on("message", (message) => {
@@ -75,7 +75,7 @@ if (import.meta.main) {
 					? "The desktop database uses an incompatible schema. Keep it for its records and use a compatible Weft build; no data was changed."
 					: "The desktop backend could not start. Check application resources and permissions; your database has been preserved.";
 			process.send?.({ type: "failure", message });
-			process.disconnect?.();
+			if (process.connected) process.disconnect();
 			process.exitCode = 1;
 		}
 	});

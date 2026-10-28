@@ -3,6 +3,7 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { constants } from "node:fs";
 import {
 	cp,
+	mkdir,
 	mkdtemp,
 	readFile,
 	rename,
@@ -25,12 +26,58 @@ const supported = process.platform === "darwin" && process.arch === "arm64";
 test("build, relocate, use, safely refuse rebuild, and reopen a standalone app", {
 	skip: !supported,
 	timeout: 180000,
-}, async () => {
-	execFileSync("pnpm", ["desktop:build"], { stdio: "inherit" });
-	const original = resolve("desktop-output/Weft.app");
+}, async (context) => {
 	const sandbox = await mkdtemp(join(tmpdir(), "weft desktop acceptance "));
+	const checkout = join(sandbox, "checkout");
+	await mkdir(checkout);
+	for (const name of [
+		"src",
+		"desktop",
+		"package.json",
+		"pnpm-lock.yaml",
+		"vite.config.ts",
+		"index.html",
+	])
+		await cp(resolve(name), join(checkout, name), { recursive: true });
+	await mkdir(join(checkout, "docs"));
+	await cp(
+		resolve("docs/browser-tools.md"),
+		join(checkout, "docs/browser-tools.md"),
+	);
+	execFileSync("pnpm", ["install", "--frozen-lockfile", "--ignore-scripts"], {
+		cwd: checkout,
+		stdio: "inherit",
+	});
+	execFileSync("pnpm", ["desktop:build"], { cwd: checkout, stdio: "inherit" });
+	const original = join(checkout, "desktop-output/Weft.app");
 	const relocated = join(sandbox, "Relocated Weft.app");
 	let finderRunning = false;
+	const quitFinder = async () => {
+		execFileSync("/usr/bin/osascript", [
+			"-e",
+			`tell application ${JSON.stringify(relocated)} to quit`,
+		]);
+		for (let i = 0; i < 100; i++) {
+			const count = execFileSync(
+				"/usr/bin/osascript",
+				[
+					"-l",
+					"JavaScript",
+					"-e",
+					"ObjC.import('AppKit'); $.NSRunningApplication.runningApplicationsWithBundleIdentifier('local.weft.desktop').count",
+				],
+				{ encoding: "utf8" },
+			).trim();
+			if (count === "0") {
+				finderRunning = false;
+				return;
+			}
+			await delay(100);
+		}
+		throw new Error(
+			"Fixture app did not finish quitting; its resources have been preserved",
+		);
+	};
 	let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
 	let modelCalls = 0;
 	let command =
@@ -102,21 +149,22 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			`import {startBackend} from './application-backend.ts'; process.once('message', async (m) => { await startBackend(m.databasePath, (url, init) => fetch('http://127.0.0.1:${address.port}/'+(String(url).includes('/decisions')?'review':'model'), init), async () => Response.json({data:[]}), ${JSON.stringify(join(sandbox, "empty-home"))}); });`,
 		);
 		const dbPath = join(sandbox, "Weft/weft.sqlite");
-		const { mkdir } = await import("node:fs/promises");
 		await mkdir(join(sandbox, "Weft"), { mode: 0o700 });
 		configureDatabase(dbPath);
-		// Make the original output unavailable; backend imports cannot fall back to it.
-		const hidden = resolve(
-			"desktop-output/.acceptance-original-unavailable.app",
-		);
-		await rename(original, hidden);
+		// Hide the complete disposable checkout, including its dependency installation.
+		const hidden = join(sandbox, "checkout-unavailable");
+		await rename(checkout, hidden);
 		try {
 			const launch = async () => {
 				const app = await electron.launch({
 					executablePath: join(relocated, "Contents/MacOS/Weft"),
 					args: [],
 					cwd: sandbox,
-					env: { ...process.env, PATH: "/usr/bin:/bin:/usr/sbin:/sbin" },
+					env: {
+						...process.env,
+						PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+						WEFT_MANAGEMENT_TOKEN: "fixture-private-management-must-not-leak",
+					},
 				});
 				const page = await app.firstWindow();
 				await page.waitForFunction(() =>
@@ -189,6 +237,15 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 				),
 			);
 			assert.match(nativeOutput, /authority-absent/);
+			await rename(hidden, checkout);
+			await first.page.goto(`${first.origin}/?chat=${chat.id}`);
+			const toolCard = first.page.locator(
+				`[data-tool-call-id="${tools[0].id}"]`,
+			);
+			await toolCard.locator("summary").click();
+			const copy = toolCard.getByRole("button", { name: "Copy", exact: true });
+			await copy.click();
+			await copy.getByText("✓").waitFor();
 			command = `node -e 'const fs=require("node:fs"); fs.writeFileSync(${JSON.stringify(join(sandbox, "command-ready"))}, String(process.pid)); const t=setInterval(()=>{if(fs.existsSync(${JSON.stringify(join(sandbox, "release-command"))})){clearInterval(t); console.log("released")}},100)'`;
 			const heldChat = await first.api(`/api/projects/${project.id}/chats`, {
 				name: "Active build guard",
@@ -209,7 +266,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			);
 			process.kill(commandPid, 0);
 			const info = await stat(
-				join(hidden, "Contents/Resources/app/desktop/main.cjs"),
+				join(original, "Contents/Resources/app/desktop/main.cjs"),
 			);
 			for (const closed of [false, true]) {
 				if (closed)
@@ -221,7 +278,10 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 						),
 					);
 				for (const script of ["desktop:build", "desktop:start"]) {
-					const result = spawnSync("pnpm", [script], { encoding: "utf8" });
+					const result = spawnSync("pnpm", [script], {
+						cwd: checkout,
+						encoding: "utf8",
+					});
 					assert.notEqual(result.status, 0);
 					assert.match(
 						result.stderr + result.stdout,
@@ -230,7 +290,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 					assert.equal(
 						(
 							await stat(
-								join(hidden, "Contents/Resources/app/desktop/main.cjs"),
+								join(original, "Contents/Resources/app/desktop/main.cjs"),
 							)
 						).mtimeMs,
 						info.mtimeMs,
@@ -246,7 +306,11 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			const secondInstance = spawn(join(relocated, "Contents/MacOS/Weft"), [], {
 				cwd: sandbox,
 				stdio: "ignore",
-				env: { ...process.env, PATH: "/usr/bin:/bin:/usr/sbin:/sbin" },
+				env: {
+					...process.env,
+					PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+					WEFT_MANAGEMENT_TOKEN: "fixture-private-management-must-not-leak",
+				},
 			});
 			assert.equal(
 				await new Promise((resolve) => secondInstance.once("exit", resolve)),
@@ -285,6 +349,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 				cwd: sandbox,
 				env: { PATH: "/usr/bin:/bin:/usr/sbin:/sbin", HOME: process.env.HOME },
 			});
+			finderRunning = true;
 			let finder:
 				| { status: number; ppid: number; cwd: string; path: string }
 				| undefined;
@@ -302,25 +367,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			assert.equal(finder.status, 200);
 			assert.equal(finder.ppid, 1);
 			assert.equal(finder.cwd, "/");
-			execFileSync("/usr/bin/osascript", [
-				"-e",
-				`tell application ${JSON.stringify(relocated)} to quit`,
-			]);
-			finderRunning = false;
-			for (let i = 0; i < 100; i++) {
-				const count = execFileSync(
-					"/usr/bin/osascript",
-					[
-						"-l",
-						"JavaScript",
-						"-e",
-						"ObjC.import('AppKit'); $.NSRunningApplication.runningApplicationsWithBundleIdentifier('local.weft.desktop').count",
-					],
-					{ encoding: "utf8" },
-				).trim();
-				if (count === "0") break;
-				await delay(100);
-			}
+			await quitFinder();
 			assert.equal((await stat(join(sandbox, "Weft"))).mode & 0o777, 0o700);
 			assert.equal((await stat(dbPath)).mode & 0o777, 0o600);
 			const database = new DatabaseSync(dbPath);
@@ -340,15 +387,19 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 				await application.close();
 				application = undefined;
 			}
-			await rename(hidden, original);
+			if (await stat(hidden).catch(() => undefined))
+				await rename(hidden, checkout);
 		}
 		// Broken source must not replace the previous working app or launch it via desktop:start.
-		const source = resolve("src/main.tsx");
+		const source = join(checkout, "src/main.tsx");
 		const saved = await readFile(source, "utf8");
 		const old = await stat(join(original, "Contents/MacOS/Weft"));
 		try {
 			await writeFile(source, saved + "\nthis is invalid TSX !!!\n");
-			const result = spawnSync("pnpm", ["desktop:start"], { encoding: "utf8" });
+			const result = spawnSync("pnpm", ["desktop:start"], {
+				cwd: checkout,
+				encoding: "utf8",
+			});
 			assert.notEqual(result.status, 0);
 			assert.equal(
 				(await stat(join(original, "Contents/MacOS/Weft"))).mtimeMs,
@@ -357,7 +408,26 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 		} finally {
 			await writeFile(source, saved);
 		}
-		const backendSource = resolve("desktop/backend.ts");
+		for (const entry of ["main.cjs", "backend.ts"]) {
+			const path = join(checkout, "desktop", entry);
+			const savedEntry = await readFile(path, "utf8");
+			const before = await stat(join(original, "Contents/MacOS/Weft"));
+			try {
+				await writeFile(path, "this is invalid JavaScript !!!");
+				const result = spawnSync("pnpm", ["desktop:build"], {
+					cwd: checkout,
+					encoding: "utf8",
+				});
+				assert.notEqual(result.status, 0);
+				assert.equal(
+					(await stat(join(original, "Contents/MacOS/Weft"))).mtimeMs,
+					before.mtimeMs,
+				);
+			} finally {
+				await writeFile(path, savedEntry);
+			}
+		}
+		const backendSource = join(checkout, "desktop/backend.ts");
 		const originalBackend = await readFile(backendSource, "utf8");
 		const marker = "// local-source-snapshot-acceptance";
 		try {
@@ -371,7 +441,10 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 				).includes(marker),
 				false,
 			);
-			execFileSync("pnpm", ["desktop:build"], { stdio: "inherit" });
+			execFileSync("pnpm", ["desktop:build"], {
+				cwd: checkout,
+				stdio: "inherit",
+			});
 			assert(
 				(
 					await readFile(
@@ -383,22 +456,20 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 		} finally {
 			await writeFile(backendSource, originalBackend);
 		}
+		await context.test(
+			"bundled backend preserves incompatible data and rejects unsupported build hosts",
+			() => backendFailures(checkout),
+		);
 	} finally {
 		if (application) await application.close();
-		if (finderRunning)
-			execFileSync("/usr/bin/osascript", [
-				"-e",
-				`tell application ${JSON.stringify(relocated)} to quit`,
-			]);
+		if (finderRunning) await quitFinder();
 		model.closeAllConnections();
 		await new Promise<void>((resolve) => model.close(() => resolve()));
 		await rm(sandbox, { recursive: true, force: true });
 	}
 });
 
-test("bundled backend preserves incompatible data and rejects unsupported build hosts", {
-	skip: !supported,
-}, async () => {
+async function backendFailures(checkout: string) {
 	const directory = await mkdtemp(join(tmpdir(), "weft desktop failures "));
 	try {
 		const path = join(directory, "incompatible.sqlite");
@@ -408,14 +479,21 @@ test("bundled backend preserves incompatible data and rejects unsupported build 
 		);
 		db.close();
 		const before = await readFile(path);
-		const root = resolve("desktop-output/Weft.app/Contents/Resources/app");
+		const root = join(
+			checkout,
+			"desktop-output/Weft.app/Contents/Resources/app",
+		);
 		const backend = spawn(
 			join(root, "runtime/bin/node"),
 			[join(root, "desktop/backend.ts")],
 			{
 				cwd: directory,
 				stdio: ["ignore", "pipe", "pipe", "ipc"],
-				env: { ...process.env, PATH: "/usr/bin:/bin:/usr/sbin:/sbin" },
+				env: {
+					...process.env,
+					PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+					WEFT_MANAGEMENT_TOKEN: "fixture-private-management-must-not-leak",
+				},
 			},
 		);
 		const messages: unknown[] = [];
@@ -427,6 +505,23 @@ test("bundled backend preserves incompatible data and rejects unsupported build 
 		assert.equal(await exited, 1);
 		assert.match(JSON.stringify(messages), /incompatible schema/);
 		assert.deepEqual(await readFile(path), before);
+		const orphan = spawn(
+			join(root, "runtime/bin/node"),
+			[join(root, "desktop/backend.ts")],
+			{ cwd: directory, stdio: ["ignore", "pipe", "pipe", "ipc"] },
+		);
+		const orphanExited = new Promise<number | null>((resolve) =>
+			orphan.once("exit", resolve),
+		);
+		const ready = new Promise<{ type: string; origin: string }>((resolve) =>
+			orphan.once("message", resolve),
+		);
+		orphan.send({ databasePath: join(directory, "fresh.sqlite") });
+		const status = await ready;
+		assert.equal(status.type, "ready");
+		orphan.disconnect();
+		assert.equal(await orphanExited, 0);
+		await assert.rejects(fetch(`${status.origin}/api/projects`));
 		const override = join(directory, "unsupported.cjs");
 		await writeFile(
 			override,
@@ -436,7 +531,7 @@ test("bundled backend preserves incompatible data and rejects unsupported build 
 		const result = spawnSync(
 			process.execPath,
 			["--require", override, "desktop/build.ts"],
-			{ encoding: "utf8" },
+			{ cwd: checkout, encoding: "utf8" },
 		);
 		assert.notEqual(result.status, 0);
 		assert.match(result.stderr, /require macOS Apple Silicon/);
@@ -447,4 +542,4 @@ test("bundled backend preserves incompatible data and rejects unsupported build 
 	} finally {
 		await rm(directory, { recursive: true, force: true });
 	}
-});
+}

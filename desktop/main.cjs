@@ -65,10 +65,21 @@ async function showWindow() {
 			external(url);
 		}
 	});
-	window.webContents.session.setPermissionRequestHandler(
-		(_contents, _permission, callback) => callback(false),
-	);
 	const current = window;
+	window.webContents.session.setPermissionRequestHandler(
+		(contents, permission, callback, details) =>
+			callback(
+				contents === current.webContents &&
+					permission === "clipboard-sanitized-write" &&
+					new URL(details.requestingUrl).origin === origin,
+			),
+	);
+	window.webContents.session.setPermissionCheckHandler(
+		(contents, permission, requestingOrigin) =>
+			contents === current.webContents &&
+			permission === "clipboard-sanitized-write" &&
+			requestingOrigin === origin,
+	);
 	try {
 		await current.loadURL(`${origin}/#management=${token}`);
 	} catch (error) {

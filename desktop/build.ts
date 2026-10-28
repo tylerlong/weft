@@ -185,13 +185,18 @@ async function build() {
 			[
 				"--input-type=module",
 				"-e",
-				`await import('./src/server.ts'); const {createRequire}=await import('node:module'); const r=createRequire(import.meta.url); r.resolve('@openai/codex/package.json'); r.resolve('playwright/package.json');`,
+				`await import('./desktop/backend.ts'); const {createRequire}=await import('node:module'); const r=createRequire(import.meta.url); r.resolve('@openai/codex/package.json'); r.resolve('playwright/package.json');`,
 			],
 			{
 				cwd: appRoot,
 				env: { ...process.env, PATH: "/usr/bin:/bin:/usr/sbin:/sbin" },
 				stdio: "inherit",
 			},
+		);
+		execFileSync(
+			join(appRoot, "runtime/bin/node"),
+			["--check", join(appRoot, "desktop/main.cjs")],
+			{ stdio: "inherit" },
 		);
 		assertStopped();
 		const previous = join(output, ".previous-Weft.app");

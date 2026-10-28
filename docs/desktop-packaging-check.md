@@ -78,7 +78,7 @@ Electron 45.0.0, `@electron/packager` 20.3.0 and standalone Node 24.21.0; Node
 archives are checked against the vendor's HTTPS `SHASUMS256.txt`. The production
 resource tree is installed from the lockfile, its relative links are restored
 and every final bundle link is checked to resolve inside the app. pnpm's local
-installation metadata is removed. Runtime imports are exercised with staging
+installation metadata is removed. Desktop main syntax and backend imports are checked with staging
 renamed unavailable and a minimal PATH before the previous app is replaced.
 
 The committed `pnpm test:desktop` checks use a disposable relocated copy with
@@ -96,9 +96,10 @@ check has passed with:
 - A subsequent executable launch reopening the existing instance, Dock activation,
   idle Quit closing the listener, reopen preserving Projects, and private storage
   permissions (`0700` directory, `0600` database) with SQLite integrity `ok`.
-- A cold LaunchServices launch from outside the checkout, parent PID 1 and cwd
+- A relocated launch with the complete disposable checkout and its dependency installation unavailable, followed by a cold LaunchServices launch from outside the checkout, parent PID 1 and cwd
   `/`, becoming usable through the packaged UI and quitting cleanly.
-- An invalid current frontend build preserving the previous successful app and
+- An existing Tool Call Copy control succeeding through Electron clipboard permissions, limited to sanitized writes from the owned application origin.
+- Invalid frontend and desktop-entry source preserving the previous successful app and
   making `desktop:start` fail; a backend source edit appearing only after rebuild.
 
 The suite also checks the bundled production backend's incompatible-schema
