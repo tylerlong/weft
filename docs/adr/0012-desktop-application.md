@@ -6,7 +6,7 @@ status: accepted
 
 首版桌面交付目标限定为 macOS：用户安装并打开 Weft 即可进入应用，在配置模型后开始使用，无需先启动服务、手动打开浏览器、克隆源码或单独安装 Node。选择随应用交付 Weft 自身所需的运行资源，而不是只给现有源码目录增加启动器，以减少用户安装和启动时的操作；首版不承担其他操作系统的适配。
 
-桌面框架选择 Electron，接受随附 Chromium 和 Node 的应用体积，以优先复用现有 JavaScript 技术栈和统一界面运行环境；Tauri 虽可使用系统 WebView，仍需另行交付 Node 后端并增加 Rust 接线。实际运行时与命令、SQLite、Playwright 的打包兼容性仍须验证，不假定 Electron 的 Node 可直接替代现有 Node 可执行文件。
+桌面框架选择 Electron，接受随附 Chromium 和 Node 的应用体积，以优先复用现有 JavaScript 技术栈和统一界面运行环境；Tauri 虽可使用系统 WebView，仍需另行交付 Node 后端并增加 Rust 接线。2026-10-28 的隔离打包探针已验证 Electron 窗口加随附独立 Node 后端可运行现有命令、SQLite 与 Playwright；不假定 Electron 自身的 Node 可直接替代现有 Node 可执行文件。实现须保留包内相对依赖链接，并恢复 GUI 启动时的用户开发 PATH；具体证据与限制见[打包验证记录](../desktop-packaging-check.md)。
 
 关闭窗口保留应用与服务，运行中的 Agent 继续执行；点击 Dock 图标重新打开窗口。Quit／Cmd+Q 在有活动任务或排队输入时先确认，随后停止执行并等待服务与数据库清理；确认中须说明未执行队列会随服务退出丢失，不承诺退出后恢复任务或队列。
 
@@ -18,4 +18,4 @@ status: accepted
 
 随应用交付 Playwright 的代码、CLI 与 skill，不额外捆绑自动化浏览器。临时浏览通过现有上游 CLI 使用已安装的 Chrome／Edge，沿用其临时 profile、配置和会话语义，不为桌面交付新增浏览器管理层；缺少可用浏览器时给出可操作的错误，不阻止应用启动或非浏览器任务。Playwright 的 WebKit 不等于系统 Safari，Safari 本身不能满足该前提。个人登录复用继续走现有 browser_connect 与官方扩展授权，不因使用同一浏览器可执行文件而改用个人 profile。
 
-上述交付边界已确认，尚未实施；运行时与实际打包行为尚未验证。
+上述交付边界已确认；打包可行性已通过上述本机探针验证，正式桌面应用尚未实施。
