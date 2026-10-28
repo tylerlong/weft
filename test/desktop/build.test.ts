@@ -459,7 +459,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 		}
 		await context.test(
 			"bundled backend preserves incompatible data and rejects unsupported build hosts",
-			() => backendFailures(checkout),
+			() => backendFailures(checkout, dbPath),
 		);
 	} finally {
 		if (application) await application.close();
@@ -470,7 +470,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 	}
 });
 
-async function backendFailures(checkout: string) {
+async function backendFailures(checkout: string, persistentPath: string) {
 	const directory = await mkdtemp(join(tmpdir(), "weft desktop failures "));
 	try {
 		const path = join(directory, "incompatible.sqlite");
@@ -514,12 +514,20 @@ async function backendFailures(checkout: string) {
 		const orphanExited = new Promise<number | null>((resolve) =>
 			orphan.once("exit", resolve),
 		);
-		const ready = new Promise<{ type: string; origin: string }>((resolve) =>
-			orphan.once("message", resolve),
+		const ready = new Promise<{ type: string; origin: string; token: string }>(
+			(resolve) => orphan.once("message", resolve),
 		);
-		orphan.send({ databasePath: join(directory, "fresh.sqlite") });
+		orphan.send({ databasePath: persistentPath });
 		const status = await ready;
 		assert.equal(status.type, "ready");
+		const persisted = await fetch(`${status.origin}/api/projects`, {
+			headers: { "x-weft-management-token": status.token },
+		});
+		assert.equal(persisted.status, 200);
+		assert.equal(
+			(await persisted.json()).projects[0].name,
+			"Desktop acceptance",
+		);
 		orphan.disconnect();
 		assert.equal(await orphanExited, 0);
 		await assert.rejects(fetch(`${status.origin}/api/projects`));
