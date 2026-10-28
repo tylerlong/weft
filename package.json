@@ -26,10 +26,10 @@
 		"typescript": "^7.0.2",
 		"vite": "^8.3.5"
 	},
-	"packageManager": "pnpm@11.22.0",
+	"packageManager": "pnpm@11.28.8+sha512.f6988a32046b9a3f78d7d7ee0747926bbe905ff9dff73bf19abb87bd7d1906a2ac90d93f73be32b5f9e14c2899569bcb0c9c5ec8a19e083f5d71bbab6dd9e0b8",
 	"dependencies": {
 		"@modelcontextprotocol/client": "2.3.1",
-		"@openai/codex": "0.164.0-darwin-arm64",
+		"@openai/codex": "0.164.0",
 		"i18next": "^26.5.6",
 		"isbinaryfile": "^6.0.0",
 		"playwright": "1.64.1",
