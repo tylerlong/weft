@@ -12,19 +12,18 @@
 
 ## 官方实现对照
 
-| 来源 | 公开行为 | 对设计的约束 |
-| --- | --- | --- |
-| [Playwright MCP](https://github.com/microsoft/playwright-mcp#user-profile) | 持久化 profile 按 workspace 区分；同一 profile 只能由一个浏览器实例占用；并发客户端可用 isolated context 或不同资料目录；支持扩展连接已有浏览器。 | 不能让多个 Agent 分别启动浏览器并指向同一个 profile。MCP 默认持久化不代表 CLI 默认持久化。 |
-| [Playwright Pages](https://playwright.dev/docs/pages) 与 [Isolation](https://playwright.dev/docs/browser-contexts) | 一个 BrowserContext 可以有多个 Page；Page 可通过明确引用操作，无需抢前台；不同 context 隔离 Cookie 等浏览器存储。 | 独立 tab 可以隔开页面操作，不能隔开同 context 的 Cookie、同源 localStorage 或网站服务端账号状态。 |
-| [Browser Use Cloud](https://github.com/browser-use/browser-use/blob/main/skills/cloud/references/sessions.md) | 一个 session 内顺序执行 agent；profile 跨 session 保存；并发 session 读取启动时快照，看不到彼此后续修改；结束 session 时保存 profile；可人工登录。 | 复用登录快照是一条现成路线，但不等于实时共享登录变化，也不能据此推断并发写回可安全合并。 |
-| [Browserbase Contexts](https://docs.browserbase.com/platform/browser/core-features/contexts) | 将浏览器用户资料保存并复用于后续 session，包含 Cookie 和站点数据。 | 持久化资料与运行中的 session 分开建模；其产品 Context 不等同于 Playwright BrowserContext。 |
+| 来源                                                                                                               | 公开行为                                                                                                                                           | 对设计的约束                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [Playwright MCP](https://github.com/microsoft/playwright-mcp#user-profile)                                         | 持久化 profile 按 workspace 区分；同一 profile 只能由一个浏览器实例占用；并发客户端可用 isolated context 或不同资料目录；支持扩展连接已有浏览器。  | 不能让多个 Agent 分别启动浏览器并指向同一个 profile。MCP 默认持久化不代表 CLI 默认持久化。        |
+| [Playwright Pages](https://playwright.dev/docs/pages) 与 [Isolation](https://playwright.dev/docs/browser-contexts) | 一个 BrowserContext 可以有多个 Page；Page 可通过明确引用操作，无需抢前台；不同 context 隔离 Cookie 等浏览器存储。                                  | 独立 tab 可以隔开页面操作，不能隔开同 context 的 Cookie、同源 localStorage 或网站服务端账号状态。 |
+| [Browser Use Cloud](https://github.com/browser-use/browser-use/blob/main/skills/cloud/references/sessions.md)      | 一个 session 内顺序执行 agent；profile 跨 session 保存；并发 session 读取启动时快照，看不到彼此后续修改；结束 session 时保存 profile；可人工登录。 | 复用登录快照是一条现成路线，但不等于实时共享登录变化，也不能据此推断并发写回可安全合并。          |
+| [Browserbase Contexts](https://docs.browserbase.com/platform/browser/core-features/contexts)                       | 将浏览器用户资料保存并复用于后续 session，包含 Cookie 和站点数据。                                                                                 | 持久化资料与运行中的 session 分开建模；其产品 Context 不等同于 Playwright BrowserContext。        |
 
 [Playwright Authentication](https://playwright.dev/docs/auth) 提供 storage state 复用方案，但通用状态文件不自动覆盖 sessionStorage。复制登录状态也不能隔离同一账号在网站服务端的修改；官方并行测试建议对会互相影响的任务使用不同账号。
 
 ## 早期设计分支（以下方已确认规则为准）
 
 已确认需求：Chrome 和 Edge 均须正式支持，分别验证人工登录、并发页面归属和跨任务登录复用；不能以 Edge 举例而将范围收窄为仅支持 Edge。各浏览器／profile 的登录资料不自动互通。
-
 1. 实时共享一个登录环境、各 Agent 独立页面，还是为各 Agent 创建独立环境并加载登录快照？前者需要处理退出／换账号的共同影响，后者需要决定登录更新传播及保存冲突。
 2. 第一版是否必须连接用户日常 Edge，还是允许使用人工登录过的 Weft 专用浏览器？
 3. 登录资料共享范围是所有 Project、单个 Project，还是显式选择的账号环境？
@@ -54,7 +53,6 @@
 用户提出的候选规则：优先已打开的浏览器，多个时 Chrome 优先于 Edge；没有打开时自行启动，默认复用用户 profile。该提案尚待确认边界，不是已接受规格。
 
 固定 v1.63.0 的事实：
-
 - [cdpRelay.ts](https://github.com/microsoft/playwright/blob/v1.63.0/packages/playwright-core/src/tools/mcp/cdpRelay.ts#L136) 会调用浏览器可执行文件，传入扩展连接页及 profile 选择；浏览器决定复用已有进程还是新启动。因此可以沿用上游启动用户原有 profile，不是用 Playwright 直接启动另一个进程抢占同一个用户资料目录。
 - [extension.ts](https://github.com/microsoft/playwright/blob/v1.63.0/packages/playwright-core/src/tools/utils/extension.ts#L22) 优先选择最近使用且装有扩展的 profile，其次选择其他装有扩展的 profile。该规则不等同于选择当前前台窗口或已登录目标账号。
 - [channelSessions.ts](https://github.com/microsoft/playwright/blob/v1.63.0/packages/playwright-core/src/tools/cli-client/channelSessions.ts#L32) 的 channel 列表检查资料目录、扩展安装记录和可用 CDP endpoint；不能据此准确判断浏览器是否正在运行。“已打开优先”若保留，需要另行可靠检测，不能将目录存在当成运行状态。
@@ -78,7 +76,6 @@ Weft 控制工具接线与返回内容，应让模型得到可操作的信息；
 ## 已确认的选择规则
 
 用户确认：
-
 1. 浏览器与 profile 的选择优先直接沿用上游规则，不添加无必要的例外或固定本地业务策略。
 2. 一旦选定浏览器和 profile，就保持这个目标，除非用户显式要求更换；网站未登录、连接失败或登录过期都不构成自动换账号环境的理由。不自动遍历其他 profile 寻找账号。
 3. 用户已同意保持范围以 Chat 为界，Sub-agent 继承同一目标，但各 Agent 拥有独立连接与页面归属。

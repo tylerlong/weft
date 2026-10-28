@@ -16,7 +16,7 @@ test("HTTP submission acknowledges its durable pending agent before the held mod
 	const path = join(directory, "db.sqlite");
 	let release: (() => void) | undefined;
 	let calls = 0;
-	const server = createTestServer(async (_url, init) => {
+	const server = createTestServer(async (_url, init): Promise<Response> => {
 		calls++;
 		assert.equal(
 			new Headers(init?.headers).has("x-weft-management-token"),

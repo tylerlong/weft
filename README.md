@@ -1,7 +1,6 @@
 # Weft
 
 A local coding agent with a web interface. Ask it to explore projects, edit files, run commands, and delegate tasks.
-
 - **Transparent model communication:** inspect model HTTP requests, responses, request counts, and provider-reported usage, with credentials redacted.
 - **Flexible delegation:** run concurrent sub-agents with different models and reasoning levels; inspect and stop tasks individually.
 - **Full local access:** tools run as your system user, with optional Jev safety review.
@@ -17,7 +16,6 @@ pnpm start
 ```
 
 Open the management URL printed in the terminal. Keep it private: it authorizes app changes. After restarting, open the newly printed URL.
-
 1. In **Settings → Models**, enter your OpenRouter API key and add a model.
 2. Create a **Project** and select folders on the machine running the service.
 3. Create a **Chat**, choose a model and reasoning level, and submit a task.

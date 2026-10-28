@@ -22,11 +22,11 @@ OpenAI 官方文档明确支持把前面的 assistant 输出与下一条 user �
 
 Anthropic Messages API 同样支持由调用方传入完整消息历史来建立多轮对话。宿主维护历史，模型生成下一条消息；assistant 先问一个问题、user 下条回答属于这一模式的直接应用。官方 SDK 用户输入文档也明确把“执行中等待回调”与“普通回合结束后等待下一条用户消息”区分，未将后者描述为不可用。[Anthropic 多轮对话](https://platform.claude.com/docs/en/build-with-claude/working-with-messages#multiple-conversational-turns)、[SDK 用户输入](https://code.claude.com/docs/en/agent-sdk/user-input)
 
-| 连续性 | 要保留的内容 | 是否要求专用提问工具 |
-| --- | --- | --- |
-| 对话继续 | 上一条问题、用户答案及任务背景 | 不要求；历史消息即可承接 |
-| 同一次 Agent 执行继续 | 当前执行身份、工具调用与必要的运行状态 | 工具等待是一种方案，是否需要此语义由产品决定 |
-| 同一个浏览器页面继续 | 登录状态、页面、页面内未提交数据及重新连接方式 | 不由提问工具自动保证；取决于浏览器和连接生命周期 |
+| 连续性                | 要保留的内容                                   | 是否要求专用提问工具                             |
+| --------------------- | ---------------------------------------------- | ------------------------------------------------ |
+| 对话继续              | 上一条问题、用户答案及任务背景                 | 不要求；历史消息即可承接                         |
+| 同一次 Agent 执行继续 | 当前执行身份、工具调用与必要的运行状态         | 工具等待是一种方案，是否需要此语义由产品决定     |
+| 同一个浏览器页面继续  | 登录状态、页面、页面内未提交数据及重新连接方式 | 不由提问工具自动保证；取决于浏览器和连接生命周期 |
 
 例如“请在 Edge 登录，完成后回复继续”，可以用普通聊天完成交接；后续 Agent 仍须能连接正确 profile／页面并确认状态。反过来，即使增加提问工具，若浏览器被关闭、profile 不复用或 tab 归属错误，登录和页面上下文仍会丢失。这是两类独立问题。
 
@@ -42,19 +42,18 @@ MCP 区分 form 与 URL 两种 elicitation：form 收集结构化回答，URL �
 
 ## 浏览器选择、标签页授权与登录是三件事
 
-| 交互 | 上游现有机制 | Weft 仍需决定的行为 |
-| --- | --- | --- |
-| 选择 Chrome／Edge | Playwright CLI 的 `attach --extension=chrome`／`--extension=msedge` 在连接前选定 channel | 用户是否在 Settings 配置默认值，或由 Agent 缺少信息时提问 |
-| 选择该浏览器的 profile | 扩展默认寻找最近使用且装有扩展的 profile，可配置 `--profile-dir-name` | 是否需要显式选择工作／个人账号环境 |
-| 选择允许连接的 tab | 扩展连接页让用户选 tab；多个客户端各自 tab group | 用上游界面即可，不应将它描述为“选择浏览器” |
-| 短信／指纹登录 | 用户在目标网站和系统验证界面完成 | Agent 如何等待用户完成，以及如何重新确认登录状态 |
+| 交互                   | 上游现有机制                                                                             | Weft 仍需决定的行为                                       |
+| ---------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 选择 Chrome／Edge      | Playwright CLI 的 `attach --extension=chrome`／`--extension=msedge` 在连接前选定 channel | 用户是否在 Settings 配置默认值，或由 Agent 缺少信息时提问 |
+| 选择该浏览器的 profile | 扩展默认寻找最近使用且装有扩展的 profile，可配置 `--profile-dir-name`                    | 是否需要显式选择工作／个人账号环境                        |
+| 选择允许连接的 tab     | 扩展连接页让用户选 tab；多个客户端各自 tab group                                         | 用上游界面即可，不应将它描述为“选择浏览器”                |
+| 短信／指纹登录         | 用户在目标网站和系统验证界面完成                                                         | Agent 如何等待用户完成，以及如何重新确认登录状态          |
 
 浏览器 channel 参数的解析见固定版本 [CLI program.ts](https://github.com/microsoft/playwright/blob/v1.63.0/packages/playwright-core/src/tools/cli-client/program.ts#L154)；profile 配置与实际浏览器参数见 [config.ts](https://github.com/microsoft/playwright/blob/v1.63.0/packages/playwright-core/src/tools/mcp/config.ts#L195)。扩展 tab 选择与每客户端 tab group 的公开约定见 [v1.63.0 扩展说明](https://github.com/microsoft/playwright/blob/v1.63.0/packages/extension/README.md#usage)。上述选择界面解决连接授权，不承担 Weft 通用问题的收集。
 
 ## 候选设计与待决定项
 
 以下是本调查的建议，而非外部产品保证或已接受设计：
-
 1. 首先用普通聊天承接澄清与“人工操作完成”的回答，确认真正不足的是信息缺失、历史续接，还是浏览器资源被清理。若已有机制满足需求，不新增提问工具或替换 Agent SDK。
 2. 登录凭据留在网站／系统验证界面。收到用户的完成确认后，Agent 再观察目标页面，不能将确认本身当成登录成功证据。
 3. 只有明确需要结构化选项／批量问题、答案精确归属并发 Sub-agent，或保留同一次执行时，再评估通用“请求用户输入”工具。这些是额外交互与执行语义的收益，不能当成普通对话无法完成澄清的证据。

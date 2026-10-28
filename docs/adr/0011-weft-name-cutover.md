@@ -1,6 +1,6 @@
 ---
-status: accepted
----
+
+## status: accepted
 
 # Weft 名称的一次性切换
 

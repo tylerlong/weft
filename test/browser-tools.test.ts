@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { browserSkill } from "../src/browser-tools.ts";
+import { browserSkill, playwrightRoot } from "../src/browser-tools.ts";
 import { CommandExecutor } from "../src/command-executor.ts";
 import { discoverSkills } from "../src/skills.ts";
 import {
@@ -52,7 +52,10 @@ test("bundled official CLI and skill work outside the application repository", {
 			},
 		});
 		assert.equal(result.exitCode, 0, output);
-		assert.match(output, /1\.63\.0/);
+		const { version } = JSON.parse(
+			await readFile(join(playwrightRoot, "package.json"), "utf8"),
+		);
+		assert.equal(output.trim(), `Version ${version}`);
 	} finally {
 		await executor.close();
 		await rm(target, { recursive: true, force: true });

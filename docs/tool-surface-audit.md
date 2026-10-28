@@ -12,15 +12,15 @@
 
 ## 当前工具逐项检查
 
-| 工具 | 实际来源与当前行为 | 差异与处理建议 |
-| --- | --- | --- |
-| `browser_connect` | `src/command-tools.ts` 定义，`src/browser-tools.ts` 复用固定上游 profile 发现，`src/server.ts` 通过同一 CommandExecutor 执行官方 CLI attach。 | 仅接通 Chat 个人目标；channel／profile／user_data_dir 可显式指定，成功连接才保存，后续 Root／Sub-agent 继承。`change_target` 只用于用户明确换目标；旧连接结果仍记录原实际目标，不覆盖并发新选择。页面动作仍完整使用上游 CLI。 |
-| `exec_command` | `src/command-tools.ts` 定义；`src/server.ts` 校验并调用 `CommandExecutor`；复用固定 `@openai/codex@0.162.0` 的 `exec-server`。 | 支持 `cmd/workdir`、`shell/login/tty/yield_time_ms/max_output_tokens`。默认交互模式；`session_id` 仅能由所属 Agent 使用。旧 `command/cwd/timeout_ms` 兼容为 OneShot，timeout 不能与 tty/yield 混用。 |
-| `read_tool_output` | 读取 SQLite 中归属当前 Agent 的实际命令日志，通过行迭代器有界分页；保留 stdout/stderr/pty 顺序和 JavaScript 字符串偏移。 | 总字符数仍扫描全部行，模型侧仅保留当前行和请求页；完整日志 UI／API 显式收集为完整有序数组。不是上游 `process/read` 的替代品：后者读取有限期进程缓冲，前者读取持久历史。完整解码文本、流标签和顺序持久保存，不另存原始字节／base64；无效或未完成 UTF-8 字节显示替换字符。 |
-| `read_file` | `fs/open` → `fs/readBlock` → `fs/close`；按完整行读取严格解码的文本，只返回 `path/text/encoding/next_line`，默认 2,000 行且最多 51,200 UTF-8 字节。 | Weft 自己的文本契约，不是被简化的同名上游模型工具。仅接受绝对 `path`、正安全整数 `start_line`（默认 1）与 `max_lines`（默认 2,000）；旧字节参数和未知字段报错。原生字节 RPC 与图片所需 base64 仍保留，图片使用 `read_image`。 |
-| `apply_patch` | 原 patch 字符串直接传给 `codex --codex-run-as-apply-patch`；支持 Add、Update、Move、Delete，没有本地重写语法。 | 上游可用 freeform/lark；Weft 使用 JSON `{patch,cwd,...}`。这改变外层格式，但未删减补丁能力。OpenRouter 跨模型 freeform 兼容性未验证；保留 patch 原文，不能据此武断要求所有模型改用 freeform。 |
-| `create_sub_agent` | Weft 自己的 Agent 执行核心；支持明确背景、模型和 reasoning 覆盖，立即返回身份，终态主动通知父任务。 | 不是 Codex spawn-agent 工具的包装。上下文不自动继承、通知和等待规则是 ADR 0002 已确定的产品行为，不是第三方参数被删。没有依据为“直接 expose”而更换调度框架。 |
-| `cancel_sub_agent` | Weft 自己的取消逻辑；父模型可取消直接子树，等待清理并返回实际结果。 | 不是上游工具包装。保留归属校验、部分结果和真实取消事实。 |
+| 工具               | 实际来源与当前行为                                                                                                                                  | 差异与处理建议                                                                                                                                                                                                                                                           |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `browser_connect`  | `src/command-tools.ts` 定义，`src/browser-tools.ts` 复用固定上游 profile 发现，`src/server.ts` 通过同一 CommandExecutor 执行官方 CLI attach。       | 仅接通 Chat 个人目标；channel／profile／user_data_dir 可显式指定，成功连接才保存，后续 Root／Sub-agent 继承。`change_target` 只用于用户明确换目标；旧连接结果仍记录原实际目标，不覆盖并发新选择。页面动作仍完整使用上游 CLI。                                            |
+| `exec_command`     | `src/command-tools.ts` 定义；`src/server.ts` 校验并调用 `CommandExecutor`；复用固定 `@openai/codex@0.162.0` 的 `exec-server`。                      | 支持 `cmd/workdir`、`shell/login/tty/yield_time_ms/max_output_tokens`。默认交互模式；`session_id` 仅能由所属 Agent 使用。旧 `command/cwd/timeout_ms` 兼容为 OneShot，timeout 不能与 tty/yield 混用。                                                                     |
+| `read_tool_output` | 读取 SQLite 中归属当前 Agent 的实际命令日志，通过行迭代器有界分页；保留 stdout/stderr/pty 顺序和 JavaScript 字符串偏移。                            | 总字符数仍扫描全部行，模型侧仅保留当前行和请求页；完整日志 UI／API 显式收集为完整有序数组。不是上游 `process/read` 的替代品：后者读取有限期进程缓冲，前者读取持久历史。完整解码文本、流标签和顺序持久保存，不另存原始字节／base64；无效或未完成 UTF-8 字节显示替换字符。 |
+| `read_file`        | `fs/open` → `fs/readBlock` → `fs/close`；按完整行读取严格解码的文本，只返回 `path/text/encoding/next_line`，默认 2,000 行且最多 51,200 UTF-8 字节。 | Weft 自己的文本契约，不是被简化的同名上游模型工具。仅接受绝对 `path`、正安全整数 `start_line`（默认 1）与 `max_lines`（默认 2,000）；旧字节参数和未知字段报错。原生字节 RPC 与图片所需 base64 仍保留，图片使用 `read_image`。                                            |
+| `apply_patch`      | 原 patch 字符串直接传给 `codex --codex-run-as-apply-patch`；支持 Add、Update、Move、Delete，没有本地重写语法。                                      | 上游可用 freeform/lark；Weft 使用 JSON `{patch,cwd,...}`。这改变外层格式，但未删减补丁能力。OpenRouter 跨模型 freeform 兼容性未验证；保留 patch 原文，不能据此武断要求所有模型改用 freeform。                                                                            |
+| `create_sub_agent` | Weft 自己的 Agent 执行核心；支持明确背景、模型和 reasoning 覆盖，立即返回身份，终态主动通知父任务。                                                 | 不是 Codex spawn-agent 工具的包装。上下文不自动继承、通知和等待规则是 ADR 0002 已确定的产品行为，不是第三方参数被删。没有依据为“直接 expose”而更换调度框架。                                                                                                             |
+| `cancel_sub_agent` | Weft 自己的取消逻辑；父模型可取消直接子树，等待清理并返回实际结果。                                                                                 | 不是上游工具包装。保留归属校验、部分结果和真实取消事实。                                                                                                                                                                                                                 |
 
 工具注册见 `src/openrouter.ts`、`src/command-tools.ts` 和 `src/file-tools.ts`；命令、文件和子 Agent 分派见 `src/server.ts`。MCP 工具来自服务发现；浏览器只增加连接归属用 `browser_connect`，不另建页面动作 function tools。
 
@@ -37,7 +37,6 @@
 ## 命令侧应恢复的内容
 
 Codex 同版本已有两层接口：
-
 - 后端 RPC：`process/start/read/write/signal/terminate`、`processId`、输出与退出通知。
 - 面向模型的工具：`exec_command`、`yield_time_ms`、返回 `session_id`、`write_stdin`；空输入可继续等待输出。
 
@@ -46,7 +45,6 @@ Codex 同版本已有两层接口：
 Codex 本身也提供 OneShot 模式；初次审查时 Weft 只接入这种行为，#160 已恢复交互式会话能力。后端还支持非 PTY 的可写 stdin，但 Codex 上层工具并不直接开放该开关；不能声称照抄上层参数就自动覆盖全部底层 RPC。
 
 #160 实际接线：
-
 - 不带 `timeout_ms` 为交互模式，默认等待 10000ms，按上游夹至 250–30000ms；到期返回存活 `session_id`，不终止进程。
 - `write_stdin` 有输入时等待 250–30000ms，空输入等待 5000–300000ms。PTY 直接接收文字和 Ctrl-C；非 PTY 沿用上游只接受 Ctrl-C，调用原生 `process/signal`，不开放后端专用 `pipeStdin` 参数。
 - 显式 `timeout_ms` 保留旧 OneShot 行为，等待完成、超时终止、不可续接；拒绝同用 `tty:true` 或 `yield_time_ms`，避免混淆两种生命周期。
@@ -67,12 +65,12 @@ Codex 本身也提供 OneShot 模式；初次审查时 Weft 只接入这种行�
 
 ## 其他接入与边界
 
-| 接入 | 应保留的上游能力 | 接线边界 |
-| --- | --- | --- |
-| MCP Tools | 使用服务发现到的 description、inputSchema 和实际调用参数，不维护手写的 Jira 工具子集；保留结果内容、顺序、structuredContent 和 isError。 | 必要时做可逆工具名映射以区分服务；MCP 与 Responses 字段形状不同，按协议映射，不改参数含义。服务 metadata 与实际结果保留记录；不支持的内容明确报告，不能静默丢失。Resources/Prompts/OAuth 等延期仍按已同意范围。 |
-| Playwright CLI | 直接使用上游 CLI 与 skill，包括会话、profile、页面操作、console、网络详情、请求/响应 body、截图、trace、run-code。 | 复用固定 Playwright 1.63.0 安装，仅给 `playwright cli` 完整参数提供可执行别名；官方 skill 与参考资料走现有发现。命令统一使用 ADR 0004 的 Full Access 无沙箱路径；受控网站的实际诊断／截图／会话／关闭记录见[兼容性验证](browser-tools.md)。 |
-| 图片工具结果 | OpenRouter `function_call_output.output` 支持字符串或 `input_text`/`input_image`/`input_file` 数组。 | 扩展当前字符串结果约束，按原生多模态格式传输图片并保存实际内容；不伪装成用户消息或 base64 文本。模型不支持时明确报告。 |
-| Skills | 上游 SKILL.md 与随附脚本、参考资料按需使用；CLI 参数不重写成自己的操作列表。 | Skill 是指导，不是 function tool；发现、显式选择和来源读取仍按 ADR 0007，不能把 skill 的权限声明当作扩大系统权限的授权。 |
+| 接入           | 应保留的上游能力                                                                                                                         | 接线边界                                                                                                                                                                                                                                    |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCP Tools      | 使用服务发现到的 description、inputSchema 和实际调用参数，不维护手写的 Jira 工具子集；保留结果内容、顺序、structuredContent 和 isError。 | 必要时做可逆工具名映射以区分服务；MCP 与 Responses 字段形状不同，按协议映射，不改参数含义。服务 metadata 与实际结果保留记录；不支持的内容明确报告，不能静默丢失。Resources/Prompts/OAuth 等延期仍按已同意范围。                             |
+| Playwright CLI | 直接使用上游 CLI 与 skill，包括会话、profile、页面操作、console、网络详情、请求/响应 body、截图、trace、run-code。                       | 复用固定 Playwright 1.63.0 安装，仅给 `playwright cli` 完整参数提供可执行别名；官方 skill 与参考资料走现有发现。命令统一使用 ADR 0004 的 Full Access 无沙箱路径；受控网站的实际诊断／截图／会话／关闭记录见[兼容性验证](browser-tools.md)。 |
+| 图片工具结果   | OpenRouter `function_call_output.output` 支持字符串或 `input_text`/`input_image`/`input_file` 数组。                                     | 扩展当前字符串结果约束，按原生多模态格式传输图片并保存实际内容；不伪装成用户消息或 base64 文本。模型不支持时明确报告。                                                                                                                      |
+| Skills         | 上游 SKILL.md 与随附脚本、参考资料按需使用；CLI 参数不重写成自己的操作列表。                                                             | Skill 是指导，不是 function tool；发现、显式选择和来源读取仍按 ADR 0007，不能把 skill 的权限声明当作扩大系统权限的授权。                                                                                                                    |
 
 ## 实施影响和验证边界
 
