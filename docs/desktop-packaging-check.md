@@ -272,3 +272,11 @@ Spec reviewers rechecked the integrated changes and the fixture-isolation and
 failure-cleanup follow-ups with no remaining findings. The final result-only
 commit and its exact remote CI remain separately identifiable in #201's result
 comment; final cross-ticket acceptance is owned by #202.
+
+A final #201 resource audit reproduced a missing-frontend startup defect: with
+`dist/index.html` absent, the app remained running on an HTTP error page and
+never presented the useful desktop error. Desktop startup now checks that the
+bundled frontend entry is readable before spawning the backend, so missing or
+unreadable content reaches the existing sanitized startup error and nonzero
+exit. The failure suite includes this ninth scenario; the earlier twelve-check
+combined run above predates this guard and is not evidence for it.

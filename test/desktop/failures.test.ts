@@ -40,6 +40,7 @@ test("packaged desktop reports startup, backend-exit and cleanup failures withou
 			"environment",
 			"missing-node",
 			"missing-backend",
+			"missing-frontend",
 			"incompatible-schema",
 			"data-directory",
 			"not-ready",
@@ -78,6 +79,11 @@ test("packaged desktop reports startup, backend-exit and cleanup failures withou
 						join(root, "runtime/bin/node-hidden"),
 					);
 				if (name === "missing-backend") await rm(backend);
+				if (name === "missing-frontend")
+					await rename(
+						join(root, "dist/index.html"),
+						join(root, "dist/index-hidden.html"),
+					);
 				if (name === "not-ready")
 					await writeFile(
 						backend,
@@ -129,6 +135,11 @@ test("packaged desktop reports startup, backend-exit and cleanup failures withou
 						child.kill("SIGKILL");
 						await new Promise((resolve) => child.once("exit", resolve));
 					}
+					if (name === "missing-frontend")
+						await rename(
+							join(root, "dist/index-hidden.html"),
+							join(root, "dist/index.html"),
+						);
 					if (name === "missing-node")
 						await rename(
 							join(root, "runtime/bin/node-hidden"),

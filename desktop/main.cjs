@@ -1,6 +1,6 @@
 const { app, BrowserWindow, Menu, dialog, shell } = require("electron");
 const { execFileSync, spawn } = require("node:child_process");
-const { mkdirSync, chmodSync } = require("node:fs");
+const { mkdirSync, chmodSync, readFileSync } = require("node:fs");
 const { join } = require("node:path");
 const { userInfo } = require("node:os");
 
@@ -224,6 +224,8 @@ if (dataFailure) {
 				return;
 			}
 			const root = app.getAppPath();
+			// Report missing/unreadable UI resources before opening an HTTP error page.
+			readFileSync(join(root, "dist/index.html"));
 			backend = spawn(
 				join(root, "runtime/bin/node"),
 				[join(root, "desktop/backend.ts")],
@@ -269,7 +271,7 @@ if (dataFailure) {
 		})
 		.catch(() =>
 			fail(
-				"Could not initialize the desktop application. Check application resources and permissions.",
+				"Could not initialize the desktop application. Rebuild Weft and check application resources and permissions.",
 			),
 		);
 }
