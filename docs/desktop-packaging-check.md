@@ -260,11 +260,13 @@ replays native work”. Both exact cases then passed together in isolation. No
 command/cancellation implementation or existing assertion was changed. These
 intermittent #193 failures remain recorded; a successful rerun is not a fix.
 
-Final integrated local validation for #201 used lifecycle implementation snapshot
-`e932bf0` on top of #200's `e6cf0c9`: formatting and typechecking passed;
-`pnpm test` passed 331 tests with six opt-in extension skips; `pnpm test:e2e`
-passed all 230 checks. The complete serialized `pnpm test:desktop` passed all
-12 checks in 168 seconds, combining relocated build/tooling/browser acceptance,
+Final integrated local validation for #201 used production lifecycle code at
+`ba6d65d` on top of #200's `e6cf0c9`: `pnpm test` passed 331 tests with six
+opt-in extension skips and `pnpm test:e2e` passed all 230 checks. Subsequent
+`e753031`/`e932bf0` changed only desktop fixture cleanup/configuration and
+evidence. Formatting and typechecking passed at the final state; the complete
+serialized `pnpm test:desktop` passed all 12 checks in 168 seconds with those
+fixture follow-ups, combining relocated build/tooling/browser acceptance,
 eight failure scenarios and window/Quit/owned-cleanup acceptance. Standards and
 Spec reviewers rechecked the integrated changes and the fixture-isolation and
 failure-cleanup follow-ups with no remaining findings. The final result-only
