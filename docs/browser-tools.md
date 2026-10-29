@@ -1,10 +1,8 @@
 # Browser tools and compatibility
 
-The installation pins `playwright` 1.63.0 as a runtime dependency. This is the
-same version already installed for the application tests. It includes the
-official `playwright cli` implementation and its `playwright-cli` skill; the
-separate `@playwright/cli` 0.1.22 package would install a different
-1.64.0-alpha build, so it is not needed.
+The installation pins `playwright` 1.64.1 as a runtime dependency, matching
+application tests. It includes the official `playwright cli` implementation and
+its unmodified `playwright-cli` skill; no separate CLI package is needed.
 
 The command environment provides `playwright-cli` as a transparent executable
 alias for the installed `playwright cli`, forwarding every argument. The
@@ -17,22 +15,36 @@ and `XDG_CACHE_HOME` (`scratch/cache`). The `playwright-cli` wrapper sets
 `PWTEST_DAEMON_SESSION_DIR` to `scratch/playwright-daemon`, keeping CLI registry,
 daemon sessions and sockets per Agent while host HOME remains available for
 personal profile discovery. This is the only registry-directory override in the
-pinned 1.63.0 implementation; its internal name must be rechecked on upgrades.
+pinned 1.64.1 implementation; its internal name must be rechecked on upgrades.
 The macOS registry does not use `XDG_CACHE_HOME`. Installed browser
 binaries remain available through `PLAYWRIGHT_BROWSERS_PATH`. This is Full Access:
 commands can read the account’s configuration and credentials. The exec-server
 process retains its own minimal environment and separate HOME.
-Install browser binaries from the Weft directory with
-`pnpm exec playwright install chromium`; the model can select them with
-`playwright-cli open <url> --browser=chromium`. The upstream CLI defaults to its
-own browser choice, not to Weft's configuration. The model must choose when to start a server, navigate, inspect diagnostics,
-read a screenshot with `read_image`, and close the browser. No readiness policy
-or browser action filter is added.
+The desktop app bundles CLI code and skill, not an automation browser. Use an
+installed Chrome or Edge for temporary tasks with `--browser=chrome` or
+`--browser=msedge`. Missing executables are reported by the real CLI; install the
+requested browser or explicitly select another installed channel. There is no
+silent browser/profile fallback. This optional prerequisite does not prevent
+startup or non-browser tasks. System Safari is not Playwright's patched WebKit.
+The ordinary source/server workflow can optionally download Chrome for Testing
+with `pnpm exec playwright install chromium`, selected by `--browser=chromium`.
+The upstream CLI's browser/config/profile choices remain intact; the model must
+choose when to start a server, navigate, inspect diagnostics, read a screenshot
+with `read_image`, and close its browser.
+
+Finder-launched desktop startup recovers only PATH from the user's interactive
+login shell (including its normal startup files), then starts the bundled Node
+backend with that PATH and normal HOME/inherited configuration. Weft's command
+wrapper still prepends bundled tools and strips management authority. Shell
+startup output is not logged; failure, empty PATH or a 15-second timeout produces
+a visible startup error. Git, project package managers, Docker and external MCP
+services remain user-installed/configured. Tool version discovery is not proof
+of every integration's compatibility.
 
 ## Choosing a browser operation
 
 Read the unmodified official `playwright-cli` skill for the complete interface.
-Use `playwright-cli open <url> --browser=chromium` for an independent temporary
+Use `playwright-cli open <url> --browser=chrome` (or `--browser=msedge`) for an independent temporary
 browser without an extension or website login. Upstream `--persistent`,
 `--profile`, CDP attachment and diagnostic operations remain available; Weft
 forwards every argument. The model chooses an operation according to the task,

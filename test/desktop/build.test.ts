@@ -82,8 +82,23 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 	let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
 	let modelCalls = 0;
 	let command =
-		'node --version && rg --version && node -e \'console.log(process.execPath); console.log(process.env.WEFT_MANAGEMENT_TOKEN === undefined ? "authority-absent" : "authority-leaked")\'';
+		'node --version && rg --version && git --version && pnpm --version && node -e \'console.log(process.execPath); console.log(process.env.WEFT_MANAGEMENT_TOKEN === undefined ? "authority-absent" : "authority-leaked")\'';
+	await writeFile(
+		join(sandbox, "package.json"),
+		JSON.stringify({ packageManager: "pnpm@11.28.8" }),
+	);
 	const model = httpServer(async (request, response) => {
+		if (request.url === "/page") {
+			response.setHeader("content-type", "text/html");
+			response.end(
+				`<title>Desktop browser fixture</title><input aria-label="Message"><button onclick="document.querySelector('output').textContent=document.querySelector('input').value">Apply</button><output></output>`,
+			);
+			return;
+		}
+		if (request.method !== "POST") {
+			response.writeHead(404).end();
+			return;
+		}
 		let text = "";
 		for await (const chunk of request) text += chunk;
 		const body = JSON.parse(text);
@@ -98,27 +113,27 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			return;
 		}
 		modelCalls++;
-		const output = body.input.some(
-			(item: { type: string }) => item.type === "function_call_output",
-		)
-			? [
-					{
-						type: "message",
-						content: [{ type: "output_text", text: "Fixture complete" }],
-					},
-				]
-			: [
-					{
-						type: "function_call",
-						call_id: `fixture-${modelCalls}`,
-						name: "exec_command",
-						arguments: JSON.stringify({
-							cmd: command,
-							login: false,
-							timeout_ms: 30000,
-						}),
-					},
-				];
+		const output =
+			body.input.at(-1)?.type === "function_call_output"
+				? [
+						{
+							type: "message",
+							content: [{ type: "output_text", text: "Fixture complete" }],
+						},
+					]
+				: [
+						{
+							type: "function_call",
+							call_id: `fixture-${modelCalls}`,
+							name: "exec_command",
+							arguments: JSON.stringify({
+								cmd: command,
+								workdir: sandbox,
+								login: false,
+								timeout_ms: 30000,
+							}),
+						},
+					];
 		response.setHeader("content-type", "text/event-stream");
 		response.end(completedBody({ output }));
 	}).listen(0, "127.0.0.1");
@@ -226,12 +241,18 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			);
 			assert.equal(modelCalls, 2);
 			const tools = (await first.api(`/api/agents/${agentId}/tools`)).toolCalls;
-			assert.equal(JSON.parse(tools[0].result).exitCode, 0);
+			assert.equal(
+				JSON.parse(tools[0].result).exitCode,
+				0,
+				JSON.stringify(tools[0]),
+			);
 			const nativeOutput = tools[0].output
 				.map((chunk: { text: string }) => chunk.text)
 				.join("");
 			assert.match(nativeOutput, /v24\.21\.0/);
 			assert.match(nativeOutput, /ripgrep/);
+			assert.match(nativeOutput, /git version/);
+			assert.match(nativeOutput, /11\.28\.8/);
 			assert(
 				nativeOutput.includes(
 					"Relocated Weft.app/Contents/Resources/app/runtime/bin/node",
@@ -334,17 +355,95 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			await application.close();
 			application = undefined;
 			await assert.rejects(fetch(first.origin + "/api/projects"));
+			const savedTarget = {
+				channel: "msedge",
+				userDataDir: join(sandbox, "unused-personal-profile"),
+				profile: "Default",
+			};
+			const fixtureDatabase = new DatabaseSync(dbPath);
+			fixtureDatabase
+				.prepare("UPDATE chats SET browser_target=? WHERE id=?")
+				.run(JSON.stringify(savedTarget), chat.id);
+			fixtureDatabase.close();
+			await rename(checkout, hidden);
 			const second = await launch();
 			application = second.app;
 			assert.equal(
 				(await second.api("/api/projects")).projects[0].name,
 				"Desktop acceptance",
 			);
+			const runTool = async (cmd: string) => {
+				command = cmd;
+				const { agentId } = await second.api(`/api/chats/${chat.id}`, {
+					prompt: "Run desktop tool fixture",
+				});
+				let result = await second.api(`/api/agents/${agentId}`);
+				for (let i = 0; i < 400; i++) {
+					result = await second.api(`/api/agents/${agentId}`);
+					if (!result.busy) break;
+					await delay(100);
+				}
+				assert.equal(
+					result.agents[0].status,
+					"succeeded",
+					JSON.stringify(result),
+				);
+				const tools = (await second.api(`/api/agents/${agentId}/tools`))
+					.toolCalls;
+				assert.equal(tools.length, 1);
+				assert.deepEqual(
+					(await second.api(`/api/chats/${chat.id}`)).browserTarget,
+					savedTarget,
+				);
+				return {
+					exitCode: JSON.parse(tools[0].result).exitCode,
+					output: tools[0].output
+						.map((chunk: { text: string }) => chunk.text)
+						.join(""),
+				};
+			};
+			for (const channel of ["chrome", "msedge"]) {
+				const browser = await runTool(
+					`playwright-cli open http://127.0.0.1:${address.port}/page --browser=${channel} && playwright-cli run-code 'async page => { await page.getByRole("textbox", {name:"Message"}).fill("${channel}-verified"); await page.getByRole("button", {name:"Apply"}).click(); return await page.locator("output").textContent(); }' && node -e 'const {execFileSync}=require("node:child_process"); console.log("owned-pids:"+JSON.stringify(execFileSync("/bin/ps",["-axo","pid=,command="],{encoding:"utf8"}).split("\\n").filter(line=>line.includes(process.env.TMPDIR)).map(line=>Number(line.trim().split(/\\s+/)[0])).filter(pid=>pid!==process.pid)))' && playwright-cli close`,
+				);
+				assert.equal(browser.exitCode, 0, browser.output);
+				assert.match(browser.output, new RegExp(`${channel}-verified`));
+				const pids = JSON.parse(
+					browser.output.match(/owned-pids:(\[[^\n]*\])/)?.[1] ?? "[]",
+				);
+				assert(pids.length > 0, browser.output);
+				for (const pid of pids) assert.throws(() => process.kill(pid, 0));
+			}
+			const missing = await runTool(
+				`PLAYWRIGHT_MCP_EXECUTABLE_PATH='${join(sandbox, "missing-browser")}' playwright-cli open http://127.0.0.1:${address.port}/page --browser=chrome`,
+			);
+			assert.notEqual(missing.exitCode, 0, missing.output);
+			assert.match(
+				missing.output,
+				/doesn't exist|does not exist|not found|executable/i,
+			);
+			const nonBrowser = await runTool(
+				"node -e 'console.log(\"non-browser-still-works\")'",
+			);
+			assert.equal(nonBrowser.exitCode, 0, nonBrowser.output);
+			assert.match(nonBrowser.output, /non-browser-still-works/);
 			await application.close();
 			application = undefined;
+			await rename(hidden, checkout);
+			command =
+				"node --version && rg --version && git --version && pnpm --version";
+			const finderScript = `(async()=>{
+				let token;
+				for(let i=0;i<100;i++) { token=sessionStorage.getItem('weft-management-token'); if(token) break; await new Promise(r=>setTimeout(r,100)); }
+				const api=async(path,body)=>{const r=await fetch(path,{method:body?'POST':'GET',headers:{'x-weft-management-token':token,'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}); if(!r.ok) throw new Error('Fixture HTTP '+r.status); return r.json();};
+				const {agentId}=await api('/api/chats/${chat.id}',{prompt:'Finder native tools'});
+				for(let i=0;i<300;i++){if(!(await api('/api/agents/'+agentId)).busy)break;await new Promise(r=>setTimeout(r,100));}
+				const tools=(await api('/api/agents/'+agentId+'/tools')).toolCalls;
+				return {status:200,exitCode:JSON.parse(tools[0].result).exitCode,output:tools[0].output.map(chunk=>chunk.text).join('')};
+			})()`;
 			await writeFile(
 				join(root, "desktop/main.cjs"),
-				`const {app}=require('electron'); const fs=require('node:fs'); app.setPath('appData', ${JSON.stringify(sandbox)}); app.on('browser-window-created', (_event,window) => { window.webContents.once('did-finish-load', async()=>{ const status=await window.webContents.executeJavaScript(\`(async()=>{for(let i=0;i<100;i++){const token=sessionStorage.getItem('weft-management-token'); if(token) return (await fetch('/api/projects',{headers:{'x-weft-management-token':token}})).status; await new Promise(r=>setTimeout(r,100));} return 0;})()\`); fs.writeFileSync(${JSON.stringify(join(sandbox, "finder.json"))},JSON.stringify({status,ppid:process.ppid,cwd:process.cwd(),path:process.env.PATH})); }); }); require('./application.cjs');`,
+				`const {app}=require('electron'); const fs=require('node:fs'); app.setPath('appData', ${JSON.stringify(sandbox)}); app.on('browser-window-created', (_event,window) => { window.webContents.once('did-finish-load', async()=>{ const result=await window.webContents.executeJavaScript(${JSON.stringify(finderScript)}); fs.writeFileSync(${JSON.stringify(join(sandbox, "finder.json"))},JSON.stringify({...result,ppid:process.ppid,cwd:process.cwd(),path:process.env.PATH})); }); }); require('./application.cjs');`,
 			);
 			execFileSync("/usr/bin/open", ["-n", relocated], {
 				cwd: sandbox,
@@ -352,7 +451,14 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			});
 			finderRunning = true;
 			let finder:
-				| { status: number; ppid: number; cwd: string; path: string }
+				| {
+						status: number;
+						ppid: number;
+						cwd: string;
+						path: string;
+						exitCode: number;
+						output: string;
+				  }
 				| undefined;
 			for (let i = 0; i < 150; i++) {
 				try {
@@ -366,6 +472,11 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			}
 			assert(finder, "LaunchServices app never became usable");
 			assert.equal(finder.status, 200);
+			assert.equal(finder.exitCode, 0, finder.output);
+			assert.match(finder.output, /11\.28\.8/);
+			assert.match(finder.output, /git version/);
+			assert.match(finder.output, /v24\.21\.0/);
+			assert.match(finder.output, /ripgrep/);
 			assert.equal(finder.ppid, 1);
 			assert.equal(finder.cwd, "/");
 			await quitFinder();

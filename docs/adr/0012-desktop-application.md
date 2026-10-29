@@ -24,4 +24,4 @@ Git 版本管理保留桌面入口源码、构建配置和脚本，不提交生�
 
 随应用交付 Playwright 的代码、CLI 与 skill，不额外捆绑自动化浏览器。临时浏览通过现有上游 CLI 使用已安装的 Chrome／Edge，沿用其临时 profile、配置和会话语义，不为桌面交付新增浏览器管理层；缺少可用浏览器时给出可操作的错误，不阻止应用启动或非浏览器任务。Playwright 的 WebKit 不等于系统 Safari，Safari 本身不能满足该前提。个人登录复用继续走现有 browser_connect 与官方扩展授权，不因使用同一浏览器可执行文件而改用个人 profile。
 
-实施规格见 [#198](https://github.com/tylerlong/weft/issues/198)。[#199](https://github.com/tylerlong/weft/issues/199) 已接通本机构建／启动命令、自包含资源、独立持久数据、运行应用拒绝重建、窗口重开及空闲退出清理。随后的 [#200](https://github.com/tylerlong/weft/issues/200) 完成 Finder 开发 PATH 与已安装浏览器验收，[#201](https://github.com/tylerlong/weft/issues/201) 完成活动任务／队列退出确认和完整故障反馈；这些尚未交付的行为不能由本次基础切片的验证推定。实际验证范围见[打包验证记录](../desktop-packaging-check.md)。
+实施规格见 [#198](https://github.com/tylerlong/weft/issues/198)。[#199](https://github.com/tylerlong/weft/issues/199) 已接通本机构建／启动命令、自包含资源、独立持久数据、运行应用拒绝重建、窗口重开及空闲退出清理。[#200](https://github.com/tylerlong/weft/issues/200) 已接通 Finder 的登录 shell PATH 恢复，并通过随包工具、已安装 Chrome／Edge 的临时页面交互、缺少浏览器和后续非浏览器任务验收；[#201](https://github.com/tylerlong/weft/issues/201) 完成活动任务／队列退出确认和完整故障反馈；这些尚未交付的行为不能由本次基础切片的验证推定。实际验证范围见[打包验证记录](../desktop-packaging-check.md)。

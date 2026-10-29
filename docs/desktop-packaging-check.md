@@ -125,3 +125,55 @@ proof that this desktop work fixed it. Read-only Standards and Spec reviewers
 accepted the corrected #199 snapshot with no remaining findings; their initial
 findings produced scoped clipboard permission, staged entry validation, complete
 checkout isolation, and fixture-cleanup corrections.
+
+## Finder environment and installed-browser delivery (#200)
+
+The local desktop entry now obtains PATH from the user's interactive login shell
+before starting the bundled backend. It inherits only the NUL-delimited PATH,
+not shell output or other shell-exported values; normal HOME and the inherited
+configuration remain available. Startup fails visibly if shell startup fails,
+yields an empty PATH or exceeds 15 seconds. Existing command-tool precedence and
+management-token stripping remain unchanged. This does not install or configure
+Git, project package managers, Docker or external MCP services.
+
+The expanded `node --test test/desktop/build.test.ts` acceptance uses the real
+packaged Electron application, standalone Node backend and HTTP → fixture model
+→ native Tool Call path. Runtime/model fixture wiring exists only in disposable
+app copies, with separate private SQLite data. A complete disposable checkout
+and its dependency tree are renamed unavailable during native and browser runs.
+The relocated app path contains spaces and is launched with a minimal GUI PATH.
+A separate cold LaunchServices launch verifies parent PID 1, cwd `/`, and actual
+native Node/ripgrep/Git/project-pinned pnpm execution, rather than UI readiness
+alone.
+
+On macOS 26.7.1 arm64, with Electron 45.0.0, standalone Node 24.21.0 and
+Playwright 1.64.1:
+- Real Git and pnpm 11.28.8 resolve through recovered PATH. The scratch project
+  explicitly pins that pnpm version; bundled Node/ripgrep still take precedence.
+  Before the PATH change, the same minimal-environment native command exited 127.
+- Installed Chrome 156.0.8078.73 and Edge 156.0.4314.50 each opened a controlled
+  localhost form through the bundled CLI, filled an input, clicked Apply and
+  returned the changed output. No downloaded automation browser or extension was
+  used. Tracked temporary-browser processes were absent after normal Agent
+  cleanup, and the seeded saved Chat personal target remained unchanged.
+- A task explicitly configured with a nonexistent browser executable returned the
+  upstream actionable executable-not-found error. A subsequent native task in
+  the same Chat succeeded. No installed browser was removed or modified, and no
+  fallback browser/profile was selected.
+
+The fixture also preserves #199's build/refusal/relocation/data assertions.
+Initial test-fixture issues (missing command cwd for the package-manager pin and
+a favicon GET incorrectly treated as model JSON) were corrected without changing
+production execution behavior. Version discovery does not establish complete
+Docker or external MCP integration compatibility. Personal browser extension
+approval/login behavior was not re-exercised; existing connection semantics and
+regressions remain unchanged. No paid calls, real Weft databases, personal login
+or browser state were used. Clean-machine installation remains untested.
+
+The complete expanded packaged suite passed 2 tests in 72.5 seconds. Cold
+LaunchServices native output reported Node 24.21.0, ripgrep 15.2.0, Git 2.56.0 and
+pnpm 11.28.8; its inherited GUI PATH remained
+`/usr/bin:/bin:/usr/sbin:/sbin`, while backend command discovery used the recovered
+login-shell PATH. Sixteen tracked temporary browser processes were gone after
+the two browser tasks. This evidence extends the historical probe and #199's
+foundation checks; it does not replace the pending integrated #202 validation.
