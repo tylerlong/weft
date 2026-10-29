@@ -2424,7 +2424,7 @@ test("Sub-agent failed reviews consume only its own model-call budget while pare
 	const server = createProductionServer(
 		model,
 		path,
-		undefined,
+		async () => Response.json({ data: [] }),
 		async (_name, args) => {
 			executed.push(JSON.parse(args).path);
 			return { status: "succeeded", result: "controlled read" };
@@ -2565,7 +2565,7 @@ for (const lowered of [false, true]) {
 				return completedResponse({ output: [message("grandchild finished")] });
 			},
 			path,
-			undefined,
+			async () => Response.json({ data: [] }),
 			undefined,
 			undefined,
 			join(directory, "empty-home"),
