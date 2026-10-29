@@ -6,20 +6,28 @@ const { userInfo } = require("node:os");
 
 app.setName("Weft");
 const data = join(app.getPath("appData"), "Weft");
-mkdirSync(data, { recursive: true, mode: 0o700 });
-chmodSync(data, 0o700);
-app.setPath("userData", data);
+let dataFailure;
+try {
+	mkdirSync(data, { recursive: true, mode: 0o700 });
+	chmodSync(data, 0o700);
+	app.setPath("userData", data);
+} catch {
+	dataFailure = true;
+}
 delete process.env.WEFT_MANAGEMENT_TOKEN;
 let backend,
 	window,
 	origin,
 	token,
 	stopping = false,
+	quitPending = false,
+	startupTimer,
 	failed = false;
 
 function fail(message) {
 	if (failed) return;
 	failed = true;
+	clearTimeout(startupTimer);
 	dialog.showErrorBox("Weft could not continue", message);
 	app.quit();
 }
@@ -105,25 +113,82 @@ if (!app.requestSingleInstanceLock()) {
 	});
 	app.on("before-quit", (event) => {
 		event.preventDefault();
-		if (stopping) return;
-		stopping = true;
-		if (!backend || backend.exitCode !== null || backend.signalCode !== null) {
-			app.exit(failed ? 1 : (backend?.exitCode ?? 1));
-			return;
-		}
-		backend.once("exit", (code, signal) => {
-			if (!failed && (code !== 0 || signal))
+		if (stopping || quitPending) return;
+		quitPending = true;
+		void (async () => {
+			if (!failed && origin && backend?.connected) {
+				const state = await new Promise((resolve, reject) => {
+					const receive = (message) => {
+						if (message.type !== "work-state") return;
+						clearTimeout(timer);
+						backend.removeListener("message", receive);
+						resolve(message);
+					};
+					const timer = setTimeout(() => {
+						backend.removeListener("message", receive);
+						reject(new Error("Backend did not report current work"));
+					}, 5000);
+					backend.on("message", receive);
+					backend.send({ type: "work-state" });
+				});
+				if (state.active || state.queued) {
+					const choice = await dialog.showMessageBox({
+						type: "warning",
+						buttons: ["Cancel", "Quit Weft"],
+						defaultId: 0,
+						cancelId: 0,
+						message: "Quit Weft?",
+						detail:
+							"Active Agents will stop. Unstarted queued input is not retained after exit. Completed effects are not undone.",
+					});
+					if (choice.response !== 1) return;
+				}
+			}
+			stopping = true;
+			clearTimeout(startupTimer);
+			if (
+				!backend ||
+				backend.exitCode !== null ||
+				backend.signalCode !== null
+			) {
+				app.exit(failed ? 1 : (backend?.exitCode ?? 0));
+				return;
+			}
+			backend.once("exit", (code, signal) => {
+				if (!failed && (code !== 0 || signal))
+					dialog.showErrorBox(
+						"Weft shutdown failed",
+						"The backend did not finish cleanup successfully. Inspect saved command records before reopening.",
+					);
+				app.exit(code === 0 && !signal && !failed ? 0 : 1);
+			});
+			backend.send({ type: "stop" }, (error) => {
+				if (error && backend.exitCode === null && backend.signalCode === null)
+					fail(
+						"Could not request backend cleanup. Keep saved records and quit again after checking the backend.",
+					);
+			});
+		})()
+			.catch(() => {
 				dialog.showErrorBox(
-					"Weft shutdown failed",
-					"The backend did not finish cleanup successfully. Inspect saved command records before reopening.",
+					"Weft could not quit",
+					"Could not check active work. The application has been left running; try Quit again.",
 				);
-			app.exit(code === 0 && !signal && !failed ? 0 : 1);
-		});
-		backend.send({ type: "stop" });
+			})
+			.finally(() => {
+				quitPending = false;
+				if (failed && !stopping) app.quit();
+			});
 	});
 	app
 		.whenReady()
 		.then(() => {
+			if (dataFailure) {
+				fail(
+					"Could not open the desktop data directory. Check its permissions and reopen Weft; no database was replaced.",
+				);
+				return;
+			}
 			Menu.setApplicationMenu(
 				Menu.buildFromTemplate([
 					{
@@ -168,12 +233,20 @@ if (!app.requestSingleInstanceLock()) {
 					stdio: ["ignore", "ignore", "ignore", "ipc"],
 				},
 			);
+			startupTimer = setTimeout(
+				() =>
+					fail(
+						"The desktop backend did not become ready. Check application resources and reopen Weft.",
+					),
+				30000,
+			);
 			backend.on("error", () =>
 				fail(
 					"Could not launch the bundled Node backend. Rebuild Weft and try again.",
 				),
 			);
 			backend.on("exit", () => {
+				clearTimeout(startupTimer);
 				if (!stopping)
 					fail(
 						"The backend stopped unexpectedly. Reopen Weft to inspect saved history; operations are not replayed.",
@@ -182,6 +255,7 @@ if (!app.requestSingleInstanceLock()) {
 			backend.on("message", (message) => {
 				if (message.type === "failure") fail(message.message);
 				if (message.type === "ready") {
+					clearTimeout(startupTimer);
 					origin = message.origin;
 					token = message.token;
 					void showWindow().catch(() =>

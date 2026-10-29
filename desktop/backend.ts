@@ -34,13 +34,11 @@ export async function startBackend(
 		});
 	};
 	process.on("message", (message) => {
-		if (
-			typeof message === "object" &&
-			message !== null &&
-			"type" in message &&
-			message.type === "stop"
-		)
-			stop();
+		if (typeof message === "object" && message !== null && "type" in message) {
+			if (message.type === "stop") stop();
+			if (message.type === "work-state")
+				process.send?.({ type: "work-state", ...server.workState() });
+		}
 	});
 	process.on("disconnect", stop);
 	process.on("SIGTERM", stop);

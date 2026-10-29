@@ -3058,7 +3058,13 @@ export function createServer(
 					}
 				: undefined,
 		);
-	return Object.assign(server, { managementToken });
+	return Object.assign(server, {
+		managementToken,
+		workState: () => ({
+			active: running.size > 0 || busy.size > 0 || steering.size > 0,
+			queued: [...queues.values()].some((queue) => queue.length > 0),
+		}),
+	});
 }
 if (import.meta.main) {
 	const managementToken = process.env.WEFT_MANAGEMENT_TOKEN;

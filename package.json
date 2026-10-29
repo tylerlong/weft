@@ -15,7 +15,7 @@
 		"test:e2e": "pnpm build && playwright test && node -e \"require('node:fs').rmSync('test-results', { recursive: true, force: true })\"",
 		"desktop:build": "node desktop/build.ts",
 		"desktop:start": "node desktop/build.ts --start",
-		"test:desktop": "node --test test/desktop/*.test.ts"
+		"test:desktop": "node --test --test-concurrency=1 test/desktop/*.test.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.6.2",
