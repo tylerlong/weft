@@ -83,7 +83,8 @@ export function ModelConfiguration({
 		const position = () => {
 			const anchor = search.getBoundingClientRect();
 			const bounds = content.getBoundingClientRect();
-			if (anchor.top < bounds.top || anchor.bottom > bounds.bottom) {
+			// Native scrolling rounds offsets to pixels while layout keeps fractional bounds.
+			if (anchor.top < bounds.top - 1 || anchor.bottom > bounds.bottom + 1) {
 				setPopup(null);
 				return;
 			}

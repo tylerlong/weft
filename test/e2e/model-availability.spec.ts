@@ -184,3 +184,30 @@ test("discovery metadata changes preserve saved Chat reasoning across reload", a
 		popup.getByRole("radio", { name: "Low", exact: true }),
 	).toBeEnabled();
 });
+
+test("a pending Settings request for the previous key does not hold current-key editing disabled", async ({
+	page,
+	app,
+}) => {
+	await page.goto(app.url);
+	const held = app.holdCatalog();
+	await page.getByRole("button", { name: "Settings", exact: true }).click();
+	await page.getByRole("tab", { name: "Models", exact: true }).click();
+	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+	await held.entered;
+	await expect(
+		settings.getByRole("button", { name: "Add model", exact: true }),
+	).toBeDisabled();
+	await settings
+		.getByLabel("OpenRouter API key", { exact: true })
+		.fill("next-key");
+	await settings.getByRole("heading", { name: "Models", exact: true }).click();
+	await expect(
+		settings.getByRole("button", { name: "Add model", exact: true }),
+	).toBeEnabled();
+	held.release();
+	await expect(
+		settings.getByRole("button", { name: "Add model", exact: true }),
+	).toBeEnabled();
+	await expect(settings.getByRole("alert")).toHaveCount(0);
+});

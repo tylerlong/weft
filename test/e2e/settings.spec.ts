@@ -336,7 +336,18 @@ test("required Settings identifies missing key, models and both", async ({
 			exact: true,
 		}),
 	).toBeVisible();
+	const blockedRemoval = await page.request.delete(
+		`${app.url}/api/models/test`,
+	);
+	expect(blockedRemoval.status()).toBe(400);
+	await page.request.put(`${app.url}/api/model-settings`, {
+		data: { apiKey: "setup-key" },
+	});
+	await page.request.post(`${app.url}/api/model-catalog`);
 	await page.request.delete(`${app.url}/api/models/test`);
+	await page.request.put(`${app.url}/api/model-settings`, {
+		data: { removeApiKey: true },
+	});
 	await expect(
 		dialog.getByText(
 			"An API key and at least one enabled model are required to use this chat.",
