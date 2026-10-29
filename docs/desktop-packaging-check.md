@@ -288,3 +288,20 @@ startup guard now reads the Vite entry's local `/assets/` references as well,
 using the existing generated HTML format rather than adding an HTML dependency.
 Separate missing-JavaScript and missing-stylesheet cases extend the failure
 matrix to eleven scenarios. These checks run before the backend/database opens.
+
+On resource-corrected snapshot `3f35120`, the serialized failure/lifecycle files
+passed all 13 checks in 106 seconds, including missing entry, JavaScript and
+stylesheet cases and the normal native/Chrome Quit path. Formatting and
+typechecking passed. Standards and Spec reviews cleared this snapshot; the
+accepted Spec resource finding was corrected by validating the referenced
+assets, with no rejected findings. The earlier full unit/frontend results cover
+the unchanged server/frontend code; exact final remote CI is recorded in #201.
+The full combined twelve-check run above predates the three resource cases and
+must not be read as a fifteen-check run of the later state.
+
+Remaining #201 validation limits: actual Dock-icon clicking was not separately
+performed (activation events and real duplicate executable launches were
+exercised). Packaged Quit measured native command and temporary Chrome cleanup;
+external MCP services and Edge active during Quit were not separately exercised.
+Existing MCP regressions passed, and #200 separately exercised real Edge page
+interaction and owned cleanup. Final parent-level acceptance remains #202.
