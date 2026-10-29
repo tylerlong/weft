@@ -36,6 +36,7 @@ import {
 	ProjectEditor,
 } from "./project-editor.tsx";
 import { SafetyReview } from "./safety-review.tsx";
+import { SettingsHelp } from "./settings-help.tsx";
 import { type ComposerSkill, SkillComposer } from "./skill-composer.tsx";
 import { TaskView, urlAgent } from "./task-view.tsx";
 
@@ -833,6 +834,15 @@ function App() {
 	const closingSettings = useRef(false);
 	const [settingsClosing, setSettingsClosing] = useState(false);
 	const [settingsTab, setSettingsTab] = useState("general");
+	useEffect(() => {
+		void settingsOpen;
+		void settingsTab;
+		void settingsClosing;
+		for (const help of settingsDialog.current?.querySelectorAll<HTMLElement>(
+			".settings-help:popover-open",
+		) ?? [])
+			help.hidePopover();
+	}, [settingsOpen, settingsTab, settingsClosing]);
 	const openSettings = (required = false) => {
 		if (!settingsDialog.current?.open) {
 			setSettingsTab(required ? "models" : "general");
@@ -2120,7 +2130,12 @@ function App() {
 								</button>
 							</div>
 						)}
-						<h3 className="mt-6 font-semibold">{t("enterBehavior")}</h3>
+						<div className="mt-6 flex items-center">
+							<h3 className="font-semibold">{t("enterBehavior")}</h3>
+							<SettingsHelp id="enter-behavior-help" label={t("enterBehavior")}>
+								{t("enterHelp", { shortcut: mac ? "⌘+Enter" : "Ctrl+Enter" })}
+							</SettingsHelp>
+						</div>
 						<label className="block">
 							<span className="sr-only">{t("enterBehavior")}</span>
 							<select
@@ -2139,12 +2154,6 @@ function App() {
 								<option value="newline">{t("enterNewline")}</option>
 							</select>
 						</label>
-						<p
-							id="enter-behavior-help"
-							className="mt-2 text-sm text-neutral-600"
-						>
-							{t("enterHelp", { shortcut: mac ? "⌘+Enter" : "Ctrl+Enter" })}
-						</p>
 						<p
 							aria-label={t("enterBehavior")}
 							role="status"
@@ -2172,7 +2181,15 @@ function App() {
 								</button>
 							</div>
 						)}
-						<h3 className="mt-6 font-semibold">{t("followUpBehavior")}</h3>
+						<h3
+							className="mt-6 font-semibold"
+							aria-label={t("followUpBehavior")}
+						>
+							{t("followUpBehavior")}
+							<SettingsHelp id="follow-up-help" label={t("followUpBehavior")}>
+								{t("followUpHelp")}
+							</SettingsHelp>
+						</h3>
 						<label className="block">
 							<span className="sr-only">{t("followUpBehavior")}</span>
 							<select
@@ -2191,9 +2208,6 @@ function App() {
 								<option value="steer">{t("steer")}</option>
 							</select>
 						</label>
-						<p id="follow-up-help" className="mt-2 text-sm text-neutral-600">
-							{t("followUpHelp")}
-						</p>
 						<p
 							aria-label={t("followUpBehavior")}
 							role="status"

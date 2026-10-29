@@ -12,6 +12,7 @@ import {
 	type McpService,
 	validateMcpServices,
 } from "./mcp-config.ts";
+import { SettingsHelp } from "./settings-help.tsx";
 
 const input =
 	"mt-2 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600";
@@ -134,19 +135,22 @@ export function McpSettings({
 	}
 	return (
 		<section aria-label={t("settingsMcp")}>
-			<p className="text-sm text-neutral-600">{t("mcpHelp")}</p>
+			<div className="flex items-center">
+				<h3 className="font-semibold">{t("settingsMcp")}</h3>
+				<SettingsHelp label={t("settingsMcp")}>{t("mcpHelp")}</SettingsHelp>
+			</div>
 			<p className="mt-2 text-sm text-neutral-600">{t("mcpTrust")}</p>
 			{open && !ready && !error && <p>{t("loading")}</p>}
 			{services.map((row, index) => (
 				<fieldset
 					key={row.id}
-					disabled={!ready}
 					className="mt-4 min-w-0 space-y-3 rounded-md border border-neutral-200 p-3"
 				>
 					<legend>{t("mcpService", { number: index + 1 })}</legend>
 					<label className="block">
 						{t("mcpName")}
 						<input
+							disabled={!ready}
 							className={input}
 							value={row.name}
 							onChange={(event) => change(row.id, { name: event.target.value })}
@@ -155,6 +159,7 @@ export function McpSettings({
 					</label>
 					<label className="flex items-center gap-2">
 						<input
+							disabled={!ready}
 							type="checkbox"
 							checked={row.enabled}
 							onChange={(event) => {
@@ -164,9 +169,12 @@ export function McpSettings({
 						/>
 						{t("mcpEnabled")}
 					</label>
-					<label className="block">
-						{t("mcpJson")}
+					<div className="block">
+						<label htmlFor={`mcp-json-${row.id}`}>{t("mcpJson")}</label>
+						<SettingsHelp label={t("mcpJson")}>{t("mcpJsonHelp")}</SettingsHelp>
 						<textarea
+							id={`mcp-json-${row.id}`}
+							disabled={!ready}
 							className={`${input} font-mono text-sm`}
 							rows={8}
 							value={row.config}
@@ -176,8 +184,7 @@ export function McpSettings({
 							}
 							onBlur={() => void commit()}
 						/>
-					</label>
-					<p className="text-sm text-neutral-600">{t("mcpJsonHelp")}</p>
+					</div>
 					{row.env.map((variable, envIndex) => (
 						<div
 							// biome-ignore lint/suspicious/noArrayIndexKey: env names are editable; inputs have no local state
@@ -187,6 +194,7 @@ export function McpSettings({
 							<label className="min-w-0 flex-1">
 								{t("mcpEnvName")}
 								<input
+									disabled={!ready}
 									className={input}
 									value={variable.name}
 									onChange={(event) =>
@@ -204,6 +212,7 @@ export function McpSettings({
 							<label className="min-w-0 flex-1">
 								{t("mcpEnvValue")}
 								<input
+									disabled={!ready}
 									className={input}
 									type="password"
 									autoComplete="new-password"
@@ -221,6 +230,7 @@ export function McpSettings({
 								/>
 							</label>
 							<button
+								disabled={!ready}
 								type="button"
 								className={button}
 								aria-label={t("mcpRemoveEnv", { name: variable.name })}
@@ -237,6 +247,7 @@ export function McpSettings({
 					))}
 					<div className="flex flex-wrap gap-2">
 						<button
+							disabled={!ready}
 							type="button"
 							className={button}
 							onClick={() =>
@@ -246,6 +257,7 @@ export function McpSettings({
 							{t("mcpAddEnv")}
 						</button>
 						<button
+							disabled={!ready}
 							type="button"
 							className={button}
 							onClick={() => {
@@ -266,8 +278,8 @@ export function McpSettings({
 			))}
 			<div className="mt-4 flex flex-wrap gap-2">
 				<button
-					type="button"
 					disabled={!ready}
+					type="button"
 					className={button}
 					onClick={() => {
 						update([...draft.current, jiraMcpService()]);
@@ -276,9 +288,10 @@ export function McpSettings({
 				>
 					{t("mcpAddJira")}
 				</button>
+				<SettingsHelp label={t("mcpAddJira")}>{t("mcpJiraHelp")}</SettingsHelp>
 				<button
-					type="button"
 					disabled={!ready}
+					type="button"
 					className={button}
 					onClick={() =>
 						update([
@@ -296,7 +309,6 @@ export function McpSettings({
 					{t("mcpAddService")}
 				</button>
 			</div>
-			<p className="mt-2 text-sm text-neutral-600">{t("mcpJiraHelp")}</p>
 			{status && (
 				<p role="status" className="mt-2 text-sm text-neutral-600">
 					{t(status)}

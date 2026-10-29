@@ -7,6 +7,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { api, appError } from "./api.ts";
+import { SettingsHelp } from "./settings-help.tsx";
 
 const keys = ["modelCallLimit", "subAgentLimit"] as const;
 type Key = (typeof keys)[number];
@@ -122,23 +123,42 @@ export function ExecutionLimits({
 	}, [commit, commitRef]);
 	return (
 		<section aria-labelledby="execution-limits-title">
-			<h3 id="execution-limits-title" className="font-semibold">
+			<h3
+				id="execution-limits-title"
+				className="font-semibold"
+				aria-label={t("executionLimits")}
+			>
 				{t("executionLimits")}
+				<SettingsHelp label={t("executionLimits")}>
+					{t("executionLimitsHelp")}
+				</SettingsHelp>
 			</h3>
-			<p className="mt-2 text-sm text-neutral-600">
-				{t("executionLimitsHelp")}
-			</p>
 			{keys.map((key) => (
 				<div key={key} className="mt-4">
-					<label>
-						<span>
+					<div>
+						<label htmlFor={`execution-${key}`}>
 							{t(
 								key === "modelCallLimit"
 									? "modelCallLimitSetting"
 									: "subAgentLimitSetting",
 							)}
-						</span>
+						</label>
+						<SettingsHelp
+							id={`execution-${key}-help`}
+							label={t(
+								key === "modelCallLimit"
+									? "modelCallLimitSetting"
+									: "subAgentLimitSetting",
+							)}
+						>
+							{t(
+								key === "modelCallLimit"
+									? "modelCallLimitHelp"
+									: "subAgentLimitHelp",
+							)}
+						</SettingsHelp>
 						<input
+							id={`execution-${key}`}
 							className={control}
 							type="number"
 							min="1"
@@ -161,17 +181,7 @@ export function ExecutionLimits({
 							}}
 							onBlur={() => void commit(key)}
 						/>
-					</label>
-					<p
-						id={`execution-${key}-help`}
-						className="mt-2 text-sm text-neutral-600"
-					>
-						{t(
-							key === "modelCallLimit"
-								? "modelCallLimitHelp"
-								: "subAgentLimitHelp",
-						)}
-					</p>
+					</div>
 					<p
 						id={`execution-${key}-feedback`}
 						role={

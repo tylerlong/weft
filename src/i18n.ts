@@ -279,6 +279,7 @@ export const resources = {
 			providerRouting_latency: "Lowest latency",
 			providerRoutingHelp:
 				"Default lets OpenRouter manage routing; price favors cheaper providers, throughput faster token generation, and latency earlier response startup. Applies to all models and Chats, including Sub-agents and Safety Review, from the next request. Preferences do not limit spending, exclude providers or guarantee performance.",
+			settingsHelp: "Help: {{setting}}",
 			settingsAutosave: "Changes save automatically.",
 			settingsSaving: "Saving…",
 			settingsSaved: "Saved",
@@ -311,7 +312,8 @@ export const resources = {
 
 			safetyReview: "Jev safety review",
 			safetyReviewHelp:
-				"Review every Tool Call for serious operational risk. Applies to all Projects, Chats and Agents. Turning this off skips Jev requests and their cost; changes apply to the next Tool Call. Review is best effort and cannot guarantee safety.",
+				"Review every Tool Call for serious operational risk. Applies to all Projects, Chats and Agents. Turning this off skips Jev requests and their cost; changes apply to the next Tool Call.",
+			safetyReviewCaution: "Review is best effort and cannot guarantee safety.",
 			safetyReviewFailed:
 				"Jev safety review failed; the operation was not executed",
 			safetyReviewBlocked: "Jev safety review blocked this operation",
@@ -614,6 +616,7 @@ export const resources = {
 			providerRouting_latency: "最低延迟",
 			providerRoutingHelp:
 				"默认由 OpenRouter 管理路由；价格优先较便宜的服务方，吞吐量优先更快生成 token，延迟优先更早开始响应。从下一次请求起应用于所有模型和对话，包括子 Agent 和安全审核。偏好不限制费用、不排除服务方，也不保证性能。",
+			settingsHelp: "帮助：{{setting}}",
 			settingsAutosave: "修改会自动保存。",
 			settingsSaving: "保存中…",
 			settingsSaved: "已保存",
@@ -642,7 +645,8 @@ export const resources = {
 
 			safetyReview: "Jev 安全审核",
 			safetyReviewHelp:
-				"审核每次工具调用是否有严重操作风险，适用于所有项目、对话和 Agent。关闭后不发送 Jev 请求、不产生审核费用；更改从下一次工具调用生效。审核仅尽力判断，无法保证安全。",
+				"审核每次工具调用是否有严重操作风险，适用于所有项目、对话和 Agent。关闭后不发送 Jev 请求、不产生审核费用；更改从下一次工具调用生效。",
+			safetyReviewCaution: "审核仅尽力判断，无法保证安全。",
 			safetyReviewFailed: "Jev 安全审核失败；本次操作未执行",
 			safetyReviewBlocked: "Jev 安全审核阻止了本次操作",
 			safetyReviewSettingsFailed: "无法读取或保存安全审核设置，请重试。",

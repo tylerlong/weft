@@ -16,6 +16,8 @@ The interface supports English and Chinese. It needs a window of at least 1280 �
 
 Each Chat selects a model and reasoning level. Sub-agents can use different models. Inspect an Agent's model-call records to see actual requests, responses, request counts, and provider-reported usage, including Safety Review calls. Prompts, file contents, images, and tool results may be sent to the configured provider; local history does not mean offline model execution.
 
+Settings explanations are available from the ⓘ help buttons beside labels and headings. Hover or focus a help button to read it; click or tap to keep it open or dismiss it. You can move the pointer onto the explanation to keep reading. Escape dismisses help first, leaving Settings open; a subsequent Escape closes Settings normally. Warnings, errors, save/discovery statuses, and recovery actions remain visible.
+
 Save your OpenRouter key before adding models. Weft discovers the complete text-output catalog allowed by that key’s current provider preferences, privacy settings, and guardrails. Discovery refreshes at backend startup, when Settings opens, after a different key is saved, and on **Retry**. Saving the same key does not trigger another refresh. The public catalog is not a fallback.
 
 Configured models are your saved models. Available models come from the latest successful discovery for the current key; availability does not guarantee a later request succeeds. Settings retains configured models absent from that result and marks them **Unavailable**. They cannot be selected as new defaults, Chat models, or explicit Sub-agent overrides; an existing selection remains visible and can still be submitted. Sub-agents without an override inherit their existing selection normally.

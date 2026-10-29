@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { type ApiError, appError, api as request } from "./api.ts";
 import type { ModelSettings } from "./model-settings.ts";
+import { SettingsHelp } from "./settings-help.tsx";
 
 const input =
 	"mt-2 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600";
@@ -447,7 +448,12 @@ export function ModelConfiguration({
 			) : (
 				<>
 					<section aria-label={t("credentials")}>
-						<h3 className="font-semibold">{t("apiKey")}</h3>
+						<div className="flex items-center">
+							<h3 className="font-semibold">{t("apiKey")}</h3>
+							<SettingsHelp id="api-key-help" label={t("apiKey")}>
+								{t("apiKeyHelp")}
+							</SettingsHelp>
+						</div>
 						<form
 							onSubmit={(event) => {
 								event.preventDefault();
@@ -482,9 +488,6 @@ export function ModelConfiguration({
 									onBlur={() => void saveKey()}
 								/>
 							</label>
-							<p id="api-key-help" className="mt-2 text-sm text-neutral-600">
-								{t("apiKeyHelp")}
-							</p>
 							<div className="mt-2 min-h-5">
 								{(keySaving || keySaved) && (
 									<p role="status" className="text-sm text-neutral-600">
@@ -512,12 +515,25 @@ export function ModelConfiguration({
 						aria-label={t("modelConfiguration")}
 						className="mt-6 border-t border-neutral-200 pt-4"
 					>
-						<h3 className="font-semibold">{t("modelConfiguration")}</h3>
-						<p className="mt-2 text-sm text-neutral-600">{t("modelsHelp")}</p>
-						<label className="mt-4 block">
-							<span className="font-semibold">{t("providerRouting")}</span>
+						<div className="flex items-center">
+							<h3 className="font-semibold">{t("modelConfiguration")}</h3>
+							<SettingsHelp label={t("modelConfiguration")}>
+								{t("modelsHelp")}
+							</SettingsHelp>
+						</div>
+						<div className="mt-4 block">
+							<label htmlFor="provider-routing" className="font-semibold">
+								{t("providerRouting")}
+							</label>
+							<SettingsHelp
+								id="provider-routing-help"
+								label={t("providerRouting")}
+							>
+								{t("providerRoutingHelp")}
+							</SettingsHelp>
 							<select
 								className={input}
+								id="provider-routing"
 								value={settings.providerRouting}
 								disabled={pending}
 								aria-describedby="provider-routing-help"
@@ -536,13 +552,7 @@ export function ModelConfiguration({
 									),
 								)}
 							</select>
-						</label>
-						<p
-							id="provider-routing-help"
-							className="mt-2 text-sm text-neutral-600"
-						>
-							{t("providerRoutingHelp")}
-						</p>
+						</div>
 						{settings.models.length === 0 && (
 							<p className="mt-4 text-neutral-600">{t("noConfiguredModels")}</p>
 						)}

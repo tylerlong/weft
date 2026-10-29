@@ -185,3 +185,19 @@
 .markdown img {
 	max-width: 100%;
 }
+
+.settings-help {
+	position: fixed;
+	inset: auto;
+	position-try-fallbacks:
+		flip-inline,
+		flip-block,
+		flip-block flip-inline;
+	margin: 0;
+	overflow-y: auto;
+	overflow-wrap: anywhere;
+	padding: 12px;
+	font-size: 14px;
+	font-weight: normal;
+	line-height: 1.5;
+}

@@ -9,6 +9,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { api, appError } from "./api.ts";
 import { createSettingState } from "./setting-state.ts";
+import { SettingsHelp } from "./settings-help.tsx";
 
 type ReviewSetting = { safetyReview: boolean };
 export function SafetyReview({
@@ -102,10 +103,19 @@ export function SafetyReview({
 	}, [commitRef, save]);
 	return (
 		<section className="mb-6" aria-labelledby="safety-review-title">
-			<h3 id="safety-review-title" className="font-semibold">
+			<h3
+				id="safety-review-title"
+				className="font-semibold"
+				aria-label={t("safetyReview")}
+			>
 				{t("safetyReview")}
+				<SettingsHelp label={t("safetyReview")}>
+					{t("safetyReviewHelp")}
+				</SettingsHelp>
 			</h3>
-			<p className="mt-2 text-sm text-neutral-600">{t("safetyReviewHelp")}</p>
+			<p className="mt-2 text-sm text-neutral-600">
+				{t("safetyReviewCaution")}
+			</p>
 			<label className="mt-4 flex items-center gap-2">
 				<input
 					type="checkbox"

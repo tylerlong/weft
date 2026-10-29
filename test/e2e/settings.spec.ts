@@ -584,3 +584,298 @@ test("Close hides the candidate portal while waiting for another tab to save", a
 	await expect(dialog).toBeHidden();
 	expect(writes).toBe(1);
 });
+
+test("Settings help supports reading, keyboard and deliberate dismissal", async ({
+	page,
+	app,
+}) => {
+	await page.goto(app.url);
+	await page.getByRole("button", { name: "Settings", exact: true }).click();
+	const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
+	const help = dialog.getByRole("button", {
+		name: "Help: Enter key behavior",
+		exact: true,
+	});
+	const text = dialog.getByRole("tooltip");
+	await expect(text).toBeHidden();
+	await help.hover();
+	await expect(text).toContainText("Shift+Enter to insert a newline.");
+	await text.hover();
+	await expect(text).toBeVisible();
+	await page.mouse.move(0, 0);
+	await expect(text).toBeHidden();
+	await help.focus();
+	await expect(text).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(text).toBeHidden();
+	await expect(help).toBeFocused();
+	await expect(dialog).toBeVisible();
+	await help.click();
+	await expect(text).toBeVisible();
+	await help.click();
+	await expect(text).toBeHidden();
+	await page.keyboard.press("Escape");
+	await expect(dialog).toBeHidden();
+});
+
+for (const chinese of [false, true]) {
+	test(`all Settings guidance is available on demand with visible cautions (${chinese ? "zh" : "en"})`, async ({
+		page,
+		app,
+	}) => {
+		if (chinese)
+			await page.request.put(`${app.url}/api/language`, {
+				data: { language: "zh-CN" },
+			});
+		await page.goto(app.url);
+		await page
+			.getByRole("button", { name: chinese ? "设置" : "Settings", exact: true })
+			.click();
+		const dialog = page.getByRole("dialog", {
+			name: chinese ? "设置" : "Settings",
+			exact: true,
+		});
+		const prefix = chinese ? "帮助：" : "Help: ";
+		const tabs = chinese
+			? ["常规", "模型", "执行", "MCP"]
+			: ["General", "Models", "Execution", "MCP"];
+		const guidance = chinese
+			? [
+					[
+						["Enter 键行为", "Shift+Enter 插入换行。"],
+						["后续发送行为", "排队"],
+					],
+					[
+						["OpenRouter API 密钥", "离开此输入框时自动保存。清空可移除密钥。"],
+						["模型", "默认模型用于新对话"],
+						["服务方路由", "偏好不限制费用、不排除服务方，也不保证性能。"],
+					],
+					[
+						["Jev 安全审核", "更改从下一次工具调用生效。"],
+						["执行上限", "已经开始的工作会继续执行。"],
+						[
+							"每个 Agent 的模型调用上限",
+							"每个子 Agent 分别计算自己的调用次数。",
+						],
+						["每个根 Agent 的子 Agent 总量上限", "根 Agent 本身不计入。"],
+					],
+					[
+						["MCP", "Agent"],
+						["添加 Jira 模板", "JIRA_PERSONAL_TOKEN"],
+						["连接 JSON", "startup_timeout_sec"],
+					],
+				]
+			: [
+					[
+						["Enter key behavior", "Shift+Enter to insert a newline."],
+						["Follow-up behavior", "Queue"],
+					],
+					[
+						[
+							"OpenRouter API key",
+							"Saves when you leave this field. Clear it to remove the key.",
+						],
+						[
+							"Models",
+							"The default is used for new chats and chats without a model.",
+						],
+						[
+							"Provider routing",
+							"Preferences do not limit spending, exclude providers or guarantee performance.",
+						],
+					],
+					[
+						["Jev safety review", "changes apply to the next Tool Call."],
+						["Execution limits", "work already started continues."],
+						["Model Calls per Agent", "Each sub-agent has its own limit."],
+						["Descendants per root Agent", "the root Agent does not."],
+					],
+					[
+						["MCP", "Agent"],
+						["Add Jira template", "JIRA_PERSONAL_TOKEN"],
+						["Connection JSON", "startup_timeout_sec"],
+					],
+				];
+		for (const [index, tab] of tabs.entries()) {
+			await dialog.getByRole("tab", { name: tab, exact: true }).click();
+			if (index === 3)
+				await dialog
+					.getByRole("button", {
+						name: chinese ? "添加 Jira 模板" : "Add Jira template",
+						exact: true,
+					})
+					.click();
+			await expect(dialog.getByRole("tooltip")).toHaveCount(0);
+			await expect(
+				dialog.getByRole("button", { name: new RegExp(`^${prefix}`) }),
+			).toHaveCount(guidance[index].length);
+			if (index === 2)
+				await expect(
+					dialog.getByText(
+						chinese
+							? "审核仅尽力判断，无法保证安全。"
+							: "Review is best effort and cannot guarantee safety.",
+						{ exact: true },
+					),
+				).toBeVisible();
+			if (index === 3)
+				await expect(
+					dialog.getByText(
+						chinese
+							? /审核无法看到外部服务内部的所有影响/
+							: /review cannot see all effects inside external services/,
+					),
+				).toBeVisible();
+			for (const [label, content] of guidance[index]) {
+				const help = dialog.getByRole("button", {
+					name: `${prefix}${label}`,
+					exact: true,
+				});
+				await help.click();
+				const tooltip = dialog.getByRole("tooltip");
+				await expect(tooltip).toContainText(content);
+				await expect(help).toHaveAccessibleDescription(
+					new RegExp(content.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+				);
+				await page.keyboard.press("Escape");
+				await expect(tooltip).toBeHidden();
+				await expect(dialog).toBeVisible();
+			}
+		}
+	});
+}
+
+test("long Settings help stays within the dialog after scrolling and resizing", async ({
+	page,
+	app,
+}) => {
+	await page.goto(app.url);
+	await page.getByRole("button", { name: "Settings", exact: true }).click();
+	const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
+	await dialog.getByRole("tab", { name: "MCP", exact: true }).click();
+	await dialog
+		.getByRole("button", { name: "Add Jira template", exact: true })
+		.click();
+	const help = dialog.getByRole("button", {
+		name: "Help: Add Jira template",
+		exact: true,
+	});
+	await help.click();
+	const tooltip = dialog.getByRole("tooltip");
+	for (const size of [
+		{ width: 1280, height: 720 },
+		{ width: 1600, height: 1000 },
+	]) {
+		await page.setViewportSize(size);
+		await expect(tooltip).toBeVisible();
+		await expect(async () => {
+			const bounds = await dialog.boundingBox();
+			const box = await tooltip.boundingBox();
+			const footer = await dialog
+				.getByRole("button", { name: "Close", exact: true })
+				.boundingBox();
+			if (!bounds || !box || !footer) throw new Error("Missing help layout");
+			expect(box.x).toBeGreaterThanOrEqual(bounds.x);
+			expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+			expect(box.y).toBeGreaterThanOrEqual(bounds.y);
+			expect(box.y + box.height).toBeLessThanOrEqual(footer.y);
+		}).toPass({ timeout: 5000 });
+		await tooltip.hover();
+		await page.waitForTimeout(1200);
+		await expect(tooltip).toBeVisible();
+	}
+	if (process.env.SETTINGS_SCREENSHOTS)
+		await page.screenshot({ path: "/tmp/weft-208-help.png" });
+	await dialog.getByRole("tab", { name: "General", exact: true }).click();
+	await expect(tooltip).toBeHidden();
+	await dialog.getByRole("tab", { name: "MCP", exact: true }).click();
+	await expect(tooltip).toBeHidden();
+	await help.click();
+	await dialog.getByRole("heading", { name: "MCP", exact: true }).click();
+	await expect(tooltip).toBeHidden();
+	await help.click();
+	await dialog.getByRole("button", { name: "Close", exact: true }).click();
+	await expect(dialog).toBeHidden();
+	await expect(page.getByRole("tooltip")).toHaveCount(0);
+});
+
+test("help preserves drafts, descriptions and disabled-control access", async ({
+	page,
+	app,
+}) => {
+	await page.route("**/api/safety-review", (route) =>
+		route.fulfill({ status: 500, json: {} }),
+	);
+	await page.goto(app.url);
+	await page.getByRole("button", { name: "Settings", exact: true }).click();
+	const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
+	const enter = dialog.getByRole("combobox", {
+		name: "Enter key behavior",
+		exact: true,
+	});
+	await expect(enter).toHaveAccessibleDescription(
+		/Shift\+Enter.*Ctrl\+Enter|Shift\+Enter.*⌘\+Enter/,
+	);
+	await enter.focus();
+	await page.keyboard.press("Shift+Tab");
+	const enterHelp = dialog.getByRole("button", {
+		name: "Help: Enter key behavior",
+		exact: true,
+	});
+	await expect(enterHelp).toBeFocused();
+	await expect(enterHelp).toHaveCSS("outline-style", "solid");
+	await expect(dialog.getByRole("tooltip")).toBeVisible();
+	await dialog.getByRole("tab", { name: "Execution", exact: true }).click();
+	await expect(
+		dialog.getByRole("checkbox", { name: "Jev safety review", exact: true }),
+	).toBeDisabled();
+	await expect(dialog.getByRole("alert")).toContainText(
+		"Could not read or save safety review.",
+	);
+	await dialog
+		.getByRole("button", { name: "Help: Jev safety review", exact: true })
+		.click();
+	await expect(dialog.getByRole("tooltip")).toContainText(
+		"Review every Tool Call",
+	);
+	await dialog.getByRole("tab", { name: "Models", exact: true }).click();
+	const key = dialog.getByLabel("OpenRouter API key", { exact: true });
+	await expect(key).toHaveAccessibleDescription(
+		"Saves when you leave this field. Clear it to remove the key.",
+	);
+	let writes = 0;
+	await page.route("**/api/model-settings", async (route) => {
+		if (route.request().method() === "PUT") writes++;
+		await route.continue();
+	});
+	await key.fill("unsaved-draft");
+	const help = dialog.getByRole("button", {
+		name: "Help: OpenRouter API key",
+		exact: true,
+	});
+	await help.click();
+	await expect(key).toBeFocused();
+	await expect(key).toHaveValue("unsaved-draft");
+	await page.keyboard.press("Escape");
+	await expect(dialog).toBeVisible();
+	await expect(key).toBeFocused();
+	expect(writes).toBe(0);
+});
+
+test.describe("touch help", () => {
+	test.use({ hasTouch: true });
+	test("tap opens and dismisses Settings help", async ({ page, app }) => {
+		await page.goto(app.url);
+		await page.getByRole("button", { name: "Settings", exact: true }).tap();
+		const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
+		const help = dialog.getByRole("button", {
+			name: "Help: Enter key behavior",
+			exact: true,
+		});
+		await help.tap();
+		await expect(dialog.getByRole("tooltip")).toContainText("Shift+Enter");
+		await help.tap();
+		await expect(dialog.getByRole("tooltip")).toBeHidden();
+		await expect(dialog).toBeVisible();
+	});
+});
