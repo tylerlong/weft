@@ -1,7 +1,8 @@
 const { app, BrowserWindow, Menu, dialog, shell } = require("electron");
-const { spawn } = require("node:child_process");
+const { execFileSync, spawn } = require("node:child_process");
 const { mkdirSync, chmodSync } = require("node:fs");
 const { join } = require("node:path");
+const { userInfo } = require("node:os");
 
 app.setName("Weft");
 const data = join(app.getPath("appData"), "Weft");
@@ -137,13 +138,33 @@ if (!app.requestSingleInstanceLock()) {
 					{ role: "windowMenu" },
 				]),
 			);
+			let path;
+			try {
+				// Shell startup output may contain notices; only the delimited PATH is inherited.
+				const output = execFileSync(
+					process.env.SHELL || userInfo().shell,
+					["-ilc", 'printf "\\0%s\\0" "$PATH"'],
+					{
+						encoding: "utf8",
+						timeout: 15000,
+						stdio: ["ignore", "pipe", "ignore"],
+					},
+				);
+				path = output.split("\0").at(-2);
+				if (!path) throw new Error("Empty login-shell PATH");
+			} catch {
+				fail(
+					"Could not resolve your login-shell PATH. Check your shell startup files and reopen Weft.",
+				);
+				return;
+			}
 			const root = app.getAppPath();
 			backend = spawn(
 				join(root, "runtime/bin/node"),
 				[join(root, "desktop/backend.ts")],
 				{
 					cwd: data,
-					env: { ...process.env },
+					env: { ...process.env, PATH: path },
 					stdio: ["ignore", "ignore", "ignore", "ipc"],
 				},
 			);
