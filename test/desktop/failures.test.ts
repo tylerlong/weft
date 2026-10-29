@@ -37,10 +37,12 @@ test("packaged desktop reports startup, backend-exit and cleanup failures withou
 	const source = await readFile(join(root, "desktop/backend.ts"), "utf8");
 	try {
 		for (const name of [
+			"environment",
 			"missing-node",
 			"missing-backend",
 			"incompatible-schema",
 			"data-directory",
+			"not-ready",
 			"unexpected-exit",
 			"cleanup-error",
 		]) {
@@ -76,6 +78,11 @@ test("packaged desktop reports startup, backend-exit and cleanup failures withou
 						join(root, "runtime/bin/node-hidden"),
 					);
 				if (name === "missing-backend") await rm(backend);
+				if (name === "not-ready")
+					await writeFile(
+						backend,
+						`process.on("message",m=>{if(m.type==="stop")process.disconnect()});`,
+					);
 				if (name === "unexpected-exit" || name === "cleanup-error") {
 					await writeFile(join(root, "desktop/failure-backend.ts"), source);
 					await writeFile(
@@ -90,13 +97,22 @@ test("packaged desktop reports startup, backend-exit and cleanup failures withou
 						...process.env,
 						PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
 						WEFT_MANAGEMENT_TOKEN: "fixture-secret-management-token",
+						...(name === "environment"
+							? { SHELL: join(sandbox, "missing-shell") }
+							: {}),
 					},
 				});
 				try {
 					const code = await new Promise<number | null>((resolve, reject) => {
-						const timer = setTimeout(() => reject(new Error("Fixture app did not exit after failure")), 15000);
+						const timer = setTimeout(
+							() => reject(new Error("Fixture app did not exit after failure")),
+							name === "not-ready" ? 40000 : 15000,
+						);
 						child.once("error", reject);
-						child.once("exit", code => { clearTimeout(timer); resolve(code); });
+						child.once("exit", (code) => {
+							clearTimeout(timer);
+							resolve(code);
+						});
 					});
 					assert.equal(code, 1);
 					const error = await readFile(failure, "utf8");

@@ -202,3 +202,52 @@ runs; the first failures remain intermittent limits, not resolved defects.
 Formatting/typechecking passed, and independent Standards/Spec reviews found no
 remaining findings. Remote CI and the final combined #202 checks remain separate
 validation of their exact source revisions.
+
+## Lifecycle slice #201 (2026-10-28)
+
+The desktop now requests a read-only, application-wide work-state snapshot from
+its owned backend on Quit/Cmd+Q. This includes running Agents, root/steering work
+and unstarted queues, including queues left idle after a failed or cancelled
+Root. The native confirmation defaults to Cancel and explains interruption,
+queue loss and completed effects. Cancel sends no stop/cancel/dequeue operation.
+Idle or confirmed Quit uses the existing server close callback, which waits for
+Agent/tool/database/ownership cleanup; the app reports failed cleanup and exits
+nonzero. Closing a window still leaves the backend running. There is no new
+replay, process sweep, cancellation engine or detached-process guarantee.
+
+The app also bounds backend readiness waiting, preserves data-directory errors,
+and displays sanitized resource/startup/backend-exit/cleanup errors. This does
+not print backend stderr, management authority or provider credentials.
+
+Lifecycle acceptance uses `node --test test/desktop/lifecycle.test.ts` and
+`node --test test/desktop/failures.test.ts`; `test:desktop` serializes files so
+fixture applications cannot compete for the desktop identity. On the current
+macOS arm64 host, the two files passed all ten checks (eight failure subcases):
+- A ready native command survives window close/reopen, second launch and Cancel.
+- Cancel preserves an idle retained queue separately from active work; confirmed
+  queue-only Quit drops it without replay on restart.
+- Confirmed active-work Quit observes the native command and temporary Chrome
+  processes live immediately before the request, then verifies every tracked
+  process and backend has exited, the HTTP listener is closed, interrupted Tool
+  Call output is saved and the desktop database can be reopened. Queued input
+  is absent after reopen; a delayed command effect and model replay remain absent.
+- Missing shell/Node/backend resources, an incompatible schema, a blocked data
+  directory, the actual 30-second readiness deadline, unexpected backend exit
+  and failed cleanup all produce sanitized errors and nonzero exit. The
+  incompatible database bytes and a blocked directory's existing file survive.
+
+Automated lifecycle tests capture/select OS dialog results in the disposable app
+wrapper; production lifecycle, HTTP, model fixture, SQLite, native command and
+Chrome paths remain real. A separate actual native-dialog check used the visible
+macOS warning and clicked **Cancel**, verified the live Agent and queue unchanged,
+then clicked **Quit Weft** and observed exit zero, the closed backend and the app
+absent from macOS's running-app inventory. This check used private fixture data
+and a held model response; it did not use personal credentials or paid calls.
+The automated failure check exposed and corrected an early data-directory
+failure that could otherwise reach Electron's single-instance setup and exit
+successfully before displaying the useful error.
+
+These checks do not resolve the separate #193 cancellation race, guarantee
+reclamation of deliberately detached processes, or replace final integrated
+acceptance in #202. No clean-machine, signing/notarization, real-data import,
+personal-browser login or public-distribution checks were performed.

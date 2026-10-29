@@ -66,6 +66,11 @@ test("desktop Quit preserves cancelled work/queues and awaits confirmed cleanup"
 			response.end("<title>Lifecycle browser fixture</title>");
 			return;
 		}
+		if (request.method !== "POST") {
+			response.writeHead(404);
+			response.end();
+			return;
+		}
 		const body = JSON.parse(text);
 		if (request.url === "/review") {
 			response.end(
@@ -244,6 +249,7 @@ test("desktop Quit preserves cancelled work/queues and awaits confirmed cleanup"
 				`fs.writeFileSync(${JSON.stringify(browserPids)},JSON.stringify(require("node:child_process").execFileSync("/bin/ps",["-axo","pid=,command="],{encoding:"utf8"}).split("\\n").filter(line=>line.includes(process.env.TMPDIR)).map(line=>Number(line.trim().split(/\\s+/)[0])).filter(pid=>pid!==process.pid)));console.log("command-ready");`,
 			);
 		const active = await start();
+		await until(() => exists(browserPids));
 		const ownedBrowserPids: number[] = JSON.parse(
 			await readFile(browserPids, "utf8"),
 		);

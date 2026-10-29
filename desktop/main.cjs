@@ -97,7 +97,13 @@ async function showWindow() {
 	if (!current.isDestroyed() && !stopping) current.show();
 }
 
-if (!app.requestSingleInstanceLock()) {
+if (dataFailure) {
+	dialog.showErrorBox(
+		"Weft could not start",
+		"Could not open the desktop data directory. Check its permissions and reopen Weft; no database was replaced.",
+	);
+	app.exit(1);
+} else if (!app.requestSingleInstanceLock()) {
 	app.quit();
 } else {
 	app.on("window-all-closed", () => {});
@@ -183,12 +189,6 @@ if (!app.requestSingleInstanceLock()) {
 	app
 		.whenReady()
 		.then(() => {
-			if (dataFailure) {
-				fail(
-					"Could not open the desktop data directory. Check its permissions and reopen Weft; no database was replaced.",
-				);
-				return;
-			}
 			Menu.setApplicationMenu(
 				Menu.buildFromTemplate([
 					{
