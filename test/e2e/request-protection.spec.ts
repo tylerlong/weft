@@ -289,6 +289,10 @@ test("credential read authorization failure can Retry successfully and Close", a
 	await expect(credentials.getByRole("alert")).toContainText(
 		"Reopen the startup URL",
 	);
+	// Opening discovery also refreshes settings; finish it while reads still fail.
+	await expect(
+		dialog.getByRole("button", { name: "Add model", exact: true }),
+	).toBeEnabled();
 	// Keep an unrelated settings refresh from recovering the read before the Retry click.
 	let releaseSettings: () => void = () => {};
 	const settingsGate = new Promise<void>((resolve) => {

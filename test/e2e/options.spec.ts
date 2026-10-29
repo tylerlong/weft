@@ -134,11 +134,11 @@ test("empty configuration uses sole mandatory Settings, then initializes the com
 	app,
 }) => {
 	const { first } = await chats(page.request, app.url);
+	await page.request.delete(`${app.url}/api/models/test`);
+	await page.request.delete(`${app.url}/api/models/second`);
 	await page.request.put(`${app.url}/api/model-settings`, {
 		data: { removeApiKey: true },
 	});
-	await page.request.delete(`${app.url}/api/models/test`);
-	await page.request.delete(`${app.url}/api/models/second`);
 	await page.goto(`${app.url}/?chat=${first.id}`);
 	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
 	await expect(settings).toBeVisible();
@@ -380,7 +380,7 @@ test("mandatory Settings waits for an existing management dialog to close", asyn
 	await expect(page.locator("dialog[open]")).toHaveCount(1);
 });
 
-test("saved unsupported effort silently resets to Default and model capabilities control effort choices", async ({
+test("saved reasoning survives metadata changes and explicit choices use current model capabilities", async ({
 	page,
 	app,
 }) => {
@@ -432,10 +432,20 @@ test("saved unsupported effort silently resets to Default and model capabilities
 	} finally {
 		db.close();
 	}
+	app.setCatalog([
+		{ id: "test", name: "Test", reasoning: { supported_efforts: ["low"] } },
+		{ id: "second", name: "Second" },
+		{
+			id: "gateway",
+			name: "Gateway",
+			reasoning: { supported_efforts: null, mandatory: true },
+		},
+	]);
+	await page.request.post(`${app.url}/api/model-catalog`);
 	await page.goto(`${app.url}/?chat=${first.id}`);
 	await expectModel(page, "test");
-	await expectEffort(page, "");
-	await page.getByLabel("Prompt", { exact: true }).fill("Use restored default");
+	await expectEffort(page, "high");
+	await page.getByLabel("Prompt", { exact: true }).fill("Use explicit default");
 	const send = page.getByRole("button", { name: /^Send(?: \(.+\))?$/ });
 	await expect(send).toBeEnabled();
 	let popup = await openChatPicker(page);
@@ -443,6 +453,7 @@ test("saved unsupported effort silently resets to Default and model capabilities
 		popup.getByRole("radiogroup", { name: "Reasoning level" }).locator("label"),
 	).toHaveText(["Model default", "Low"]);
 	await page.keyboard.press("Escape");
+	await selectEffort(page, "");
 	await send.click();
 	await expect(page.getByRole("log")).toContainText("Test answer");
 	const history = new DatabaseSync(join(app.folder, "db.sqlite"));
@@ -528,7 +539,7 @@ test("combined picker applies immediately, keeps focus on keyboard dismissal and
 	await expect(trigger).toHaveCount(0);
 });
 
-test("catalog capability changes normalize saved Chat choices without rewriting submitted history", async ({
+test("catalog capability changes preserve saved Chat choices until explicit editing and never rewrite history", async ({
 	page,
 	app,
 }) => {
@@ -544,10 +555,11 @@ test("catalog capability changes normalize saved Chat choices without rewriting 
 		{ id: "second", name: "Second" },
 	]);
 	await page.request.post(`${app.url}/api/model-catalog`);
-	await expectEffort(page, "");
+	await expectEffort(page, "high");
 	await expect(page.getByLabel("Prompt", { exact: true })).toHaveValue(
 		"Preserve my draft",
 	);
+	await selectEffort(page, "");
 	await page.getByRole("button", { name: /^Send(?: \(.+\))?$/ }).click();
 	await expect
 		.poll(

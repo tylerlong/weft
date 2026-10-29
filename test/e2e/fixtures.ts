@@ -14,7 +14,7 @@ export const test = base.extend<{
 			models: {
 				id: string;
 				name: string;
-				reasoning?: { supported_efforts: string[] };
+				reasoning?: { supported_efforts: string[] | null; mandatory?: boolean };
 			}[],
 		) => void;
 		folder: string;
@@ -170,7 +170,11 @@ export const test = base.extend<{
 				end: () => controller.close(),
 			};
 		}
-		let catalogModels = [
+		let catalogModels: {
+			id: string;
+			name: string;
+			reasoning?: { supported_efforts: string[] | null; mandatory?: boolean };
+		}[] = [
 			{
 				id: "test",
 				name: "Test",
