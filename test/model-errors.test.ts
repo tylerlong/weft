@@ -19,9 +19,10 @@ const message = (text: string) => ({
 
 async function fixture(model: typeof fetch) {
 	const directory = await mkdtemp(join(tmpdir(), "model-errors-"));
+	let catalog = [blocked, available];
 	const server = createServer(model, join(directory, "db.sqlite"), async () =>
 		Response.json({
-			data: [blocked, available].map((id) => ({
+			data: catalog.map((id) => ({
 				id,
 				name: id,
 				architecture: { output_modalities: ["text"] },
@@ -62,6 +63,9 @@ async function fixture(model: typeof fetch) {
 	return {
 		request,
 		chat,
+		setCatalog: (ids: string[]) => {
+			catalog = ids;
+		},
 		ask: async (prompt: string) => {
 			const accepted = await request(`/api/chats/${chat.id}`, "POST", {
 				prompt,
@@ -76,17 +80,30 @@ async function fixture(model: typeof fetch) {
 	};
 }
 
-test("guardrail rejection fails the accepted Agent with inspectable redacted details and explicit recovery", async () => {
+test("key change preserves an unavailable selection through guardrail rejection and explicit recovery", async () => {
 	const requested: string[] = [];
+	const nextCredential = "replacement-private-key";
 	const f = await fixture(async (_url, init) => {
 		const model = JSON.parse(String(init?.body)).model;
 		requested.push(model);
 		return model === blocked
-			? Response.json(guardrailRejection(credential), { status: 404 })
+			? Response.json(guardrailRejection(nextCredential), { status: 404 })
 			: completedResponse({ output: [message("Recovered")] });
 	});
 	try {
+		await f.request("/api/model-settings", "PUT", { defaultModelId: blocked });
+		const configured = await f.request("/api/model-settings");
+		f.setCatalog([available]);
+		await f.request("/api/model-settings", "PUT", { apiKey: nextCredential });
+		await f.request("/api/model-catalog");
 		const before = await f.request("/api/model-settings");
+		assert.equal(before.discovery.status, "success");
+		assert.deepEqual(
+			before.discovery.models.map((row: { id: string }) => row.id),
+			[available],
+		);
+		assert.deepEqual(before.models, configured.models);
+		assert.equal(before.defaultModelId, blocked);
 		const failed = await f.ask("Use the saved model");
 		assert.equal(failed.status, "failed");
 		assert.equal(failed.errorCode, "modelRequestRejected");
@@ -95,6 +112,7 @@ test("guardrail rejection fails the accepted Agent with inspectable redacted det
 			/HTTP 404.*Model blocked by guardrail: 40 endpoints excluded/,
 		);
 		assert.doesNotMatch(JSON.stringify(failed), new RegExp(credential));
+		assert.doesNotMatch(JSON.stringify(failed), new RegExp(nextCredential));
 		assert.deepEqual(failed.toolCalls, []);
 		assert.equal(failed.calls.length, 1);
 		assert.equal(failed.calls[0].status, "failed");
@@ -112,6 +130,7 @@ test("guardrail rejection fails the accepted Agent with inspectable redacted det
 		]);
 		assert.match(body.error.message, /\[REDACTED\]/);
 		assert.doesNotMatch(JSON.stringify(records), new RegExp(credential));
+		assert.doesNotMatch(JSON.stringify(records), new RegExp(nextCredential));
 		assert.deepEqual(await f.request("/api/model-settings"), before);
 		const chat = await f.request(`/api/chats/${f.chat.id}`);
 		assert.equal(chat.chatOptions.modelId, blocked);

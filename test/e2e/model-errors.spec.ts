@@ -2,7 +2,7 @@ import { guardrailRejection } from "../model-error-fixture.ts";
 import { expectEffort, expectModel, selectModel } from "./chat-picker.ts";
 import { expect, test } from "./fixtures.ts";
 
-test("guardrail rejection shows safe localized diagnostics and recovers after an explicit replacement", async ({
+test("changed-key unavailability preserves a selection through safe localized rejection and explicit recovery", async ({
 	page,
 	app,
 }) => {
@@ -31,14 +31,34 @@ test("guardrail rejection shows safe localized diagnostics and recovers after an
 	await page.request.put(`${app.url}/api/chats/${chat.id}`, {
 		data: { modelId: blocked, reasoningEffort: "high" },
 	});
+	await page.request.put(`${app.url}/api/model-settings`, {
+		data: { defaultModelId: blocked },
+	});
 	const before = await (
 		await page.request.get(`${app.url}/api/model-settings`)
 	).json();
-	const rejection = guardrailRejection("zkey");
+	await page.goto(`${app.url}/?chat=${chat.id}`);
+	await page.getByRole("button", { name: "Settings", exact: true }).click();
+	await page.getByRole("tab", { name: "Models", exact: true }).click();
+	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+	await expect(
+		settings.getByRole("button", { name: "Add model", exact: true }),
+	).toBeEnabled();
+	app.setCatalog([{ id: "second", name: "Second" }]);
+	await settings
+		.getByLabel("OpenRouter API key", { exact: true })
+		.fill("next-key");
+	await settings.getByRole("heading", { name: "Models", exact: true }).click();
+	await expect(
+		settings.getByText("Unavailable for this API key", { exact: true }),
+	).toHaveCount(2);
+	await settings.getByRole("button", { name: "Close", exact: true }).click();
+	await expectModel(page, blocked);
+	await expectEffort(page, "high");
+	const rejection = guardrailRejection("next-key");
 	rejection.error.message +=
 		' <img src=x onerror="window.providerScriptRan=true">';
 	app.failModel("http", JSON.stringify(rejection), 404);
-	await page.goto(`${app.url}/?chat=${chat.id}`);
 	await expectModel(page, blocked);
 	await expectEffort(page, "high");
 	await page.getByLabel("Prompt").fill("Use the saved model");
@@ -52,6 +72,7 @@ test("guardrail rejection shows safe localized diagnostics and recovers after an
 	);
 	await expect(log.getByRole("alert")).toContainText("[REDACTED]");
 	await expect(log).not.toContainText("zkey");
+	await expect(log).not.toContainText("next-key");
 	await expect(log.locator("img")).toHaveCount(0);
 	expect(await page.evaluate(() => "providerScriptRan" in window)).toBe(false);
 	const response = log
@@ -65,6 +86,7 @@ test("guardrail rejection shows safe localized diagnostics and recovers after an
 	);
 	await expect(response).toContainText("model-ignored-by-guardrail");
 	await expect(response).not.toContainText("zkey");
+	await expect(response).not.toContainText("next-key");
 	await expectModel(page, blocked);
 	await expectEffort(page, "high");
 	const after = await (
