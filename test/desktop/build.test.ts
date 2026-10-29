@@ -59,31 +59,52 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 	const original = join(checkout, "desktop-output/Weft.app");
 	const relocated = join(sandbox, "Relocated Weft.app");
 	let finderRunning = false;
-	const quitFinder = async () => {
-		execFileSync("/usr/bin/osascript", [
-			"-e",
-			`tell application ${JSON.stringify(relocated)} to quit`,
-		]);
-		for (let i = 0; i < 100; i++) {
-			const count = execFileSync(
-				"/usr/bin/osascript",
-				[
-					"-l",
-					"JavaScript",
+	let preserveFixture = false;
+	const quitFinder = async (bundle = relocated, pidPath?: string) => {
+		try {
+			const pid = pidPath ? Number(await readFile(pidPath, "utf8")) : undefined;
+			const running = () => {
+				if (pid !== undefined) {
+					assert(Number.isSafeInteger(pid) && pid > 0);
+					try {
+						process.kill(pid, 0);
+						return true;
+					} catch {
+						return false;
+					}
+				}
+				return (
+					execFileSync(
+						"/usr/bin/osascript",
+						[
+							"-l",
+							"JavaScript",
+							"-e",
+							"ObjC.import('AppKit'); $.NSRunningApplication.runningApplicationsWithBundleIdentifier('local.weft.desktop').count",
+						],
+						{ encoding: "utf8" },
+					).trim() !== "0"
+				);
+			};
+			if (running())
+				execFileSync("/usr/bin/osascript", [
 					"-e",
-					"ObjC.import('AppKit'); $.NSRunningApplication.runningApplicationsWithBundleIdentifier('local.weft.desktop').count",
-				],
-				{ encoding: "utf8" },
-			).trim();
-			if (count === "0") {
-				finderRunning = false;
-				return;
+					`tell application ${JSON.stringify(bundle)} to quit`,
+				]);
+			for (let i = 0; i < 100; i++) {
+				if (!running()) {
+					finderRunning = false;
+					return;
+				}
+				await delay(100);
 			}
-			await delay(100);
+			throw new Error("Fixture app did not finish quitting");
+		} catch (error) {
+			preserveFixture = true;
+			throw new Error(`Fixture resources preserved at ${sandbox}`, {
+				cause: error,
+			});
 		}
-		throw new Error(
-			"Fixture app did not finish quitting; its resources have been preserved",
-		);
 	};
 	let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
 	const closeApplication = async () => {
@@ -606,6 +627,8 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 				const mainPath = join(checkout, "desktop/main.cjs");
 				const main = await readFile(mainPath, "utf8");
 				const started = join(sandbox, "started.json");
+				const startedPid = join(sandbox, "started-pid");
+				let opened = false;
 				const unrelated = spawn(
 					process.execPath,
 					[
@@ -620,7 +643,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 				try {
 					await writeFile(
 						mainPath,
-						`const fixtureElectron=require('electron');fixtureElectron.app.setPath('appData',${JSON.stringify(join(sandbox, "start-data"))});fixtureElectron.dialog.showErrorBox=(title,message)=>require('node:fs').writeFileSync(${JSON.stringify(started)},JSON.stringify({error:title+message}));fixtureElectron.app.on('browser-window-created',(_event,window)=>window.webContents.once('did-finish-load',()=>{require('node:fs').writeFileSync(${JSON.stringify(started)},JSON.stringify({url:new URL(window.webContents.getURL()).origin,ppid:process.ppid,pid:process.pid}));fixtureElectron.app.quit()}));\n${main}`,
+						`const fixtureElectron=require('electron');require('node:fs').writeFileSync(${JSON.stringify(startedPid)},String(process.pid));fixtureElectron.app.setPath('appData',${JSON.stringify(join(sandbox, "start-data"))});fixtureElectron.dialog.showErrorBox=(title,message)=>require('node:fs').writeFileSync(${JSON.stringify(started)},JSON.stringify({error:title+message}));fixtureElectron.app.on('browser-window-created',(_event,window)=>window.webContents.once('did-finish-load',()=>{require('node:fs').writeFileSync(${JSON.stringify(started)},JSON.stringify({url:new URL(window.webContents.getURL()).origin,ppid:process.ppid,pid:process.pid}));fixtureElectron.app.quit()}));\n${main}`,
 					);
 					await writeFile(
 						backendSource,
@@ -631,6 +654,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 						cwd: checkout,
 						stdio: "inherit",
 					});
+					opened = true;
 					for (
 						let i = 0;
 						i < 150 && !(await stat(started).catch(() => false));
@@ -668,15 +692,22 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 					await writeFile(backendSource, originalBackend);
 					unrelated.kill();
 					await new Promise((resolve) => unrelated.once("exit", resolve));
+					if (opened) await quitFinder(original, startedPid);
 				}
 			},
 		);
 	} finally {
-		await closeApplication();
-		if (finderRunning) await quitFinder();
-		model.closeAllConnections();
-		await new Promise<void>((resolve) => model.close(() => resolve()));
-		await rm(sandbox, { recursive: true, force: true });
+		let appCleanupComplete = false;
+		try {
+			await closeApplication();
+			if (finderRunning) await quitFinder();
+			appCleanupComplete = true;
+		} finally {
+			model.closeAllConnections();
+			await new Promise<void>((resolve) => model.close(() => resolve()));
+			if (appCleanupComplete && !preserveFixture)
+				await rm(sandbox, { recursive: true, force: true });
+		}
 	}
 });
 
