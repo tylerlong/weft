@@ -169,6 +169,7 @@ async function build() {
 			arch: "arm64",
 			electronVersion: "45.0.0",
 			appBundleId: identity,
+			icon: join(root, "assets/icons/weft.icns"),
 			asar: false,
 			derefSymlinks: false,
 			prune: false,

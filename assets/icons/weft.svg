@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <title>Weft</title>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="#a85e39"/>
+  <g fill="#f5efe4" transform="translate(180 301) scale(.95)">
+    <path d="M0 0h113q10 0 17 14l81 176-64 140Z"/>
+    <path d="m157 355 112-250 76 165-96 158q-7 15-19 15t-16-12Z"/>
+    <path d="M244 0h112q12 0 18 14l183 341-66 76q-8 12-20 12t-16-12Z"/>
+    <path d="m490 190 78-176q6-14 18-14h114L554 330Z"/>
+  </g>
+</svg>

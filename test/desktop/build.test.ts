@@ -35,6 +35,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 		".gitignore",
 		"src",
 		"desktop",
+		"assets/icons",
 		"package.json",
 		"pnpm-lock.yaml",
 		"vite.config.ts",
@@ -188,6 +189,22 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			mode: constants.COPYFILE_FICLONE,
 		});
 		const root = join(relocated, "Contents/Resources/app");
+		const icon = execFileSync(
+			"/usr/bin/plutil",
+			[
+				"-extract",
+				"CFBundleIconFile",
+				"raw",
+				"-o",
+				"-",
+				join(relocated, "Contents/Info.plist"),
+			],
+			{ encoding: "utf8" },
+		).trim();
+		assert.deepEqual(
+			await readFile(join(relocated, "Contents/Resources", icon)),
+			await readFile(resolve("assets/icons/weft.icns")),
+		);
 		assert.deepEqual((await readdir(root)).sort(), [
 			"desktop",
 			"dist",
