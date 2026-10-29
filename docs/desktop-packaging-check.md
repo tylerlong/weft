@@ -177,3 +177,19 @@ pnpm 11.28.8; its inherited GUI PATH remained
 login-shell PATH. Sixteen tracked temporary browser processes were gone after
 the two browser tasks. This evidence extends the historical probe and #199's
 foundation checks; it does not replace the pending integrated #202 validation.
+
+Fixture browser configuration is isolated in the disposable backend copy:
+`PWTEST_CLI_GLOBAL_CONFIG` points to its empty fixture home, and inherited
+`PLAYWRIGHT_MCP_*` options are removed there before launching tasks. Normal HOME
+and login-shell PATH discovery are retained. Production does not clear browser
+configuration. The test's saved personal-target directory is also asserted never
+to have been created or contacted by temporary browser tasks.
+
+The initial #200 full native run reported 328 passed, 2 failed and 6 skipped:
+responsive HTTP shutdown did not observe its `ready` output before its assertion
+(`test/command-shutdown.test.ts:120`), and root/child cancellation observed a
+`root-escaped` or `child-escaped` delayed-effect file where ENOENT was required
+(`test/command-tools.test.ts:752`). These tests and their imported server/command
+sources are unchanged by #200 and do not import the desktop entry point. The
+latter is consistent with the separate #193 cancellation investigation; these
+results are preserved and not claimed fixed by this desktop work.

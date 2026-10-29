@@ -162,7 +162,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 		);
 		await writeFile(
 			join(root, "desktop/backend.ts"),
-			`import {startBackend} from './application-backend.ts'; process.once('message', async (m) => { await startBackend(m.databasePath, (url, init) => fetch('http://127.0.0.1:${address.port}/'+(String(url).includes('/decisions')?'review':'model'), init), async () => Response.json({data:[]}), ${JSON.stringify(join(sandbox, "empty-home"))}); });`,
+			`import {startBackend} from './application-backend.ts'; for(const key of Object.keys(process.env)) if(key.startsWith('PLAYWRIGHT_MCP_')) delete process.env[key]; process.env.PWTEST_CLI_GLOBAL_CONFIG=${JSON.stringify(join(sandbox, "empty-home"))}; process.once('message', async (m) => { await startBackend(m.databasePath, (url, init) => fetch('http://127.0.0.1:${address.port}/'+(String(url).includes('/decisions')?'review':'model'), init), async () => Response.json({data:[]}), ${JSON.stringify(join(sandbox, "empty-home"))}); });`,
 		);
 		const dbPath = join(sandbox, "Weft/weft.sqlite");
 		await mkdir(join(sandbox, "Weft"), { mode: 0o700 });
@@ -427,6 +427,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			);
 			assert.equal(nonBrowser.exitCode, 0, nonBrowser.output);
 			assert.match(nonBrowser.output, /non-browser-still-works/);
+			await assert.rejects(stat(savedTarget.userDataDir), { code: "ENOENT" });
 			await application.close();
 			application = undefined;
 			await rename(hidden, checkout);
