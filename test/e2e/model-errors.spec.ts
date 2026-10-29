@@ -53,6 +53,7 @@ test("changed-key unavailability preserves a selection through safe localized re
 		settings.getByText("Unavailable for this API key", { exact: true }),
 	).toHaveCount(2);
 	await settings.getByRole("button", { name: "Close", exact: true }).click();
+	await expect(settings).toBeHidden();
 	await expectModel(page, blocked);
 	await expectEffort(page, "high");
 	const rejection = guardrailRejection("next-key");
