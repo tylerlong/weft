@@ -103,16 +103,14 @@ export function SafetyReview({
 	}, [commitRef, save]);
 	return (
 		<section className="mb-6" aria-labelledby="safety-review-title">
-			<h3
-				id="safety-review-title"
-				className="font-semibold"
-				aria-label={t("safetyReview")}
-			>
-				{t("safetyReview")}
+			<div className="flex items-center">
+				<h3 id="safety-review-title" className="font-semibold">
+					{t("safetyReview")}
+				</h3>
 				<SettingsHelp label={t("safetyReview")}>
 					{t("safetyReviewHelp")}
 				</SettingsHelp>
-			</h3>
+			</div>
 			<p className="mt-2 text-sm text-neutral-600">
 				{t("safetyReviewCaution")}
 			</p>

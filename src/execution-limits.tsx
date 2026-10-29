@@ -123,16 +123,14 @@ export function ExecutionLimits({
 	}, [commit, commitRef]);
 	return (
 		<section aria-labelledby="execution-limits-title">
-			<h3
-				id="execution-limits-title"
-				className="font-semibold"
-				aria-label={t("executionLimits")}
-			>
-				{t("executionLimits")}
+			<div className="flex items-center">
+				<h3 id="execution-limits-title" className="font-semibold">
+					{t("executionLimits")}
+				</h3>
 				<SettingsHelp label={t("executionLimits")}>
 					{t("executionLimitsHelp")}
 				</SettingsHelp>
-			</h3>
+			</div>
 			{keys.map((key) => (
 				<div key={key} className="mt-4">
 					<div>

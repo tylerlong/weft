@@ -2181,15 +2181,12 @@ function App() {
 								</button>
 							</div>
 						)}
-						<h3
-							className="mt-6 font-semibold"
-							aria-label={t("followUpBehavior")}
-						>
-							{t("followUpBehavior")}
+						<div className="mt-6 flex items-center">
+							<h3 className="font-semibold">{t("followUpBehavior")}</h3>
 							<SettingsHelp id="follow-up-help" label={t("followUpBehavior")}>
 								{t("followUpHelp")}
 							</SettingsHelp>
-						</h3>
+						</div>
 						<label className="block">
 							<span className="sr-only">{t("followUpBehavior")}</span>
 							<select

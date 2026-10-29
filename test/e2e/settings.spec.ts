@@ -734,6 +734,31 @@ for (const chinese of [false, true]) {
 				await help.click();
 				const tooltip = dialog.getByRole("tooltip");
 				await expect(tooltip).toContainText(content);
+				if (label === "Connection JSON" || label === "连接 JSON") {
+					const before = await help.boundingBox();
+					await dialog
+						.locator(".settings-content:visible")
+						.evaluate((element) => element.scrollBy(0, 12));
+					await expect(async () => {
+						await expect(tooltip).toBeVisible();
+						const anchor = await help.boundingBox();
+						const box = await tooltip.boundingBox();
+						const bounds = await dialog.boundingBox();
+						if (!before || !anchor || !box || !bounds)
+							throw new Error("Missing scrolled help layout");
+						expect(anchor.y).toBeLessThan(before.y);
+						expect(
+							Math.min(
+								Math.abs(box.y - anchor.y - anchor.height),
+								Math.abs(box.y + box.height - anchor.y),
+							),
+						).toBeLessThan(1);
+						expect(box.x).toBeGreaterThanOrEqual(bounds.x);
+						expect(box.x + box.width).toBeLessThanOrEqual(
+							bounds.x + bounds.width,
+						);
+					}).toPass({ timeout: 5000 });
+				}
 				await expect(help).toHaveAccessibleDescription(
 					new RegExp(content.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
 				);
@@ -878,4 +903,31 @@ test.describe("touch help", () => {
 		await expect(dialog.getByRole("tooltip")).toBeHidden();
 		await expect(dialog).toBeVisible();
 	});
+});
+
+test("removing an MCP service removes its help without errors", async ({
+	page,
+	app,
+}) => {
+	const errors: string[] = [];
+	page.on("pageerror", (error) => errors.push(error.message));
+	await page.goto(app.url);
+	await page.getByRole("button", { name: "Settings", exact: true }).click();
+	const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
+	await dialog.getByRole("tab", { name: "MCP", exact: true }).click();
+	await dialog
+		.getByRole("button", { name: "Add service", exact: true })
+		.click();
+	await dialog
+		.getByRole("button", { name: "Help: Connection JSON", exact: true })
+		.click();
+	await expect(dialog.getByRole("tooltip")).toContainText("Use command/args");
+	await dialog
+		.getByRole("button", { name: "Remove service", exact: true })
+		.click();
+	await expect(dialog.getByRole("tooltip")).toHaveCount(0);
+	await expect(
+		dialog.getByRole("button", { name: "Help: Connection JSON", exact: true }),
+	).toHaveCount(0);
+	expect(errors).toEqual([]);
 });
