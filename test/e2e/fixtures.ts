@@ -18,7 +18,11 @@ export const test = base.extend<{
 			}[],
 		) => void;
 		folder: string;
-		failModel: (kind?: "http" | "network", body?: string) => void;
+		failModel: (
+			kind?: "http" | "network",
+			body?: string,
+			status?: number,
+		) => void;
 		disconnectClients: () => void;
 		restart: () => Promise<void>;
 		holdTool: (result: ToolExecution) => {
@@ -101,11 +105,14 @@ export const test = base.extend<{
 		configured.close();
 		let fail: "http" | "network" | null = null;
 		let failedBody = "upstream failure";
+		let failedStatus = 500;
 		const failModel = (
 			kind: "http" | "network" = "http",
 			body = "upstream failure",
+			status = 500,
 		) => {
 			failedBody = body;
+			failedStatus = status;
 			fail = kind;
 		};
 		let gate: { entered: () => void; wait: Promise<void> } | undefined;
@@ -207,7 +214,7 @@ export const test = base.extend<{
 						const failure = fail;
 						fail = null;
 						if (failure === "network") throw new Error("network disconnected");
-						return new Response(failedBody, { status: 500 });
+						return new Response(failedBody, { status: failedStatus });
 					}
 					const current = gate;
 					gate = undefined;

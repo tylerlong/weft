@@ -213,6 +213,8 @@ export const resources = {
 			notFound: "Not found.",
 			modelConfigMissing: "OpenRouter configuration is missing.",
 			modelRequestFailed: "OpenRouter request failed.",
+			modelRequestRejected:
+				"OpenRouter rejected this request. Inspect the response details; choose an available model to try again.",
 			modelNoAnswer: "OpenRouter did not return a text answer.",
 			modelCallLimit: "Agent reached the model request limit.",
 			modelInvalidResponse: "OpenRouter returned an invalid response.",
@@ -542,6 +544,8 @@ export const resources = {
 			notFound: "未找到。",
 			modelConfigMissing: "OpenRouter 配置缺失。",
 			modelRequestFailed: "OpenRouter 请求失败。",
+			modelRequestRejected:
+				"OpenRouter 拒绝了本次请求。请查看响应详情；可选择一个可用模型后重新提交。",
 			modelNoAnswer: "OpenRouter 没有返回文本答案。",
 			modelCallLimit: "此 Agent 已达到模型请求上限。",
 			modelInvalidResponse: "OpenRouter 返回了无效响应。",

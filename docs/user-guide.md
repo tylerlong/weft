@@ -166,4 +166,6 @@ The built app runs without a separate Node installation or pnpm. Git, project ru
 | Database is incompatible or already owned            | Preserve the data. Use a compatible build or close the other owner; do not delete/reset the database as a troubleshooting shortcut.                                                                                     |
 | Source/server interface rejects access after restart | Open the newly printed management URL; keep it private.                                                                                                                                                                 |
 
+A model can pass discovery and still have a request rejected after a policy, credential, budget, or provider change. The failed Agent shows OpenRouter's reason when supplied; expand its **Response** to inspect the sanitized HTTP status, response body, and structured policy details. A guardrail rejection can return HTTP 404, but 404 alone does not prove an organization block. Failed requests preserve your configured models, defaults, Chat choices, and history. Choose an available replacement explicitly and send again when appropriate; Weft does not automatically replace models or retry failed requests.
+
 For implementation details or recorded validation limits, use the [documentation index](README.md).
