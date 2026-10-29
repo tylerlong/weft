@@ -193,3 +193,12 @@ responsive HTTP shutdown did not observe its `ready` output before its assertion
 sources are unchanged by #200 and do not import the desktop entry point. The
 latter is consistent with the separate #193 cancellation investigation; these
 results are preserved and not claimed fixed by this desktop work.
+
+At `cafc9bf`, the configuration-isolated packaged suite passed 2/2 again (72.5 s).
+Both initially failing native cases passed in isolation (0.9 s), and the complete
+`pnpm test` rerun passed 330 with 6 opt-in extension skips and no failures (75 s).
+No production native changes or assertion relaxations were made between these
+runs; the first failures remain intermittent limits, not resolved defects.
+Formatting/typechecking passed, and independent Standards/Spec reviews found no
+remaining findings. Remote CI and the final combined #202 checks remain separate
+validation of their exact source revisions.
