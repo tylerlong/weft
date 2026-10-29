@@ -280,3 +280,11 @@ bundled frontend entry is readable before spawning the backend, so missing or
 unreadable content reaches the existing sanitized startup error and nonzero
 exit. The failure suite includes this ninth scenario; the earlier twelve-check
 combined run above predates this guard and is not evidence for it.
+
+Spec review accepted a further resource finding: a readable entry could still
+reference missing JavaScript/CSS and load a blank window. A missing-JavaScript
+packaged red check reproduced that failure at the same 15-second deadline. The
+startup guard now reads the Vite entry's local `/assets/` references as well,
+using the existing generated HTML format rather than adding an HTML dependency.
+Separate missing-JavaScript and missing-stylesheet cases extend the failure
+matrix to eleven scenarios. These checks run before the backend/database opens.

@@ -5,6 +5,7 @@ import {
 	cp,
 	mkdir,
 	mkdtemp,
+	readdir,
 	readFile,
 	rename,
 	rm,
@@ -41,6 +42,8 @@ test("packaged desktop reports startup, backend-exit and cleanup failures withou
 			"missing-node",
 			"missing-backend",
 			"missing-frontend",
+			"missing-javascript",
+			"missing-stylesheet",
 			"incompatible-schema",
 			"data-directory",
 			"not-ready",
@@ -52,6 +55,18 @@ test("packaged desktop reports startup, backend-exit and cleanup failures withou
 					failure = join(data, "failure.json");
 				await mkdir(data);
 				const backend = join(root, "desktop/backend.ts");
+				let missingAsset: string | undefined;
+				if (name === "missing-javascript" || name === "missing-stylesheet") {
+					missingAsset = (await readdir(join(root, "dist/assets"))).find(
+						(file) =>
+							file.endsWith(name === "missing-javascript" ? ".js" : ".css"),
+					);
+					assert(missingAsset);
+					await rename(
+						join(root, "dist/assets", missingAsset),
+						join(root, "dist", missingAsset),
+					);
+				}
 				await writeFile(backend, source);
 				if (name === "data-directory")
 					await writeFile(join(data, "Weft"), "preserve");
@@ -131,6 +146,11 @@ test("packaged desktop reports startup, backend-exit and cleanup failures withou
 							"preserve",
 						);
 				} finally {
+					if (missingAsset)
+						await rename(
+							join(root, "dist", missingAsset),
+							join(root, "dist/assets", missingAsset),
+						);
 					if (child.exitCode === null && child.signalCode === null) {
 						child.kill("SIGKILL");
 						await new Promise((resolve) => child.once("exit", resolve));

@@ -225,7 +225,11 @@ if (dataFailure) {
 			}
 			const root = app.getAppPath();
 			// Report missing/unreadable UI resources before opening an HTTP error page.
-			readFileSync(join(root, "dist/index.html"));
+			const entry = readFileSync(join(root, "dist/index.html"), "utf8");
+			for (const [, asset] of entry.matchAll(
+				/(?:src|href)=["'](\/assets\/[^"']+)["']/g,
+			))
+				readFileSync(join(root, "dist", asset.slice(1)));
 			backend = spawn(
 				join(root, "runtime/bin/node"),
 				[join(root, "desktop/backend.ts")],
