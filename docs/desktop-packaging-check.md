@@ -221,8 +221,8 @@ not print backend stderr, management authority or provider credentials.
 
 Lifecycle acceptance uses `node --test test/desktop/lifecycle.test.ts` and
 `node --test test/desktop/failures.test.ts`; `test:desktop` serializes files so
-fixture applications cannot compete for the desktop identity. On the current
-macOS arm64 host, the two files passed all ten checks (eight failure subcases):
+fixture applications cannot compete for the desktop identity. On macOS 26.7.1 arm64 with Electron 45.0.0, bundled Node 24.21.0
+and Chrome 156.0.8078.73, the two files passed all ten checks (eight failure subcases):
 - A ready native command survives window close/reopen, second launch and Cancel.
 - Cancel preserves an idle retained queue separately from active work; confirmed
   queue-only Quit drops it without replay on restart.

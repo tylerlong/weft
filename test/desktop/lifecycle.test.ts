@@ -259,6 +259,7 @@ test("desktop Quit preserves cancelled work/queues and awaits confirmed cleanup"
 		assert(live(active.pid));
 		assert(live(backendPid));
 		assert.equal((await first.api(route)).queue.length, 1);
+		assert.equal((await first.api(`/api/agents/${active.agentId}`)).busy, true);
 		await writeFile(choice, "1");
 		const exited = new Promise((resolve) =>
 			first.app.process().once("exit", resolve),
