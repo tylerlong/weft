@@ -5,6 +5,7 @@ import {
 	cp,
 	mkdir,
 	mkdtemp,
+	readdir,
 	readFile,
 	rename,
 	rm,
@@ -45,6 +46,11 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 		resolve("docs/browser-tools.md"),
 		join(checkout, "docs/browser-tools.md"),
 	);
+	for (const directory of ["data", "test", ".git", ".cache"])
+		await mkdir(join(checkout, directory));
+	await writeFile(join(checkout, ".env"), "fixture-secret-do-not-package");
+	await writeFile(join(checkout, "data/weft.sqlite"), "fixture-private-data");
+	await writeFile(join(checkout, "docs/private-fixture.md"), "fixture-private");
 	execFileSync("pnpm", ["install", "--frozen-lockfile", "--ignore-scripts"], {
 		cwd: checkout,
 		stdio: "inherit",
@@ -161,6 +167,16 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			mode: constants.COPYFILE_FICLONE,
 		});
 		const root = join(relocated, "Contents/Resources/app");
+		assert.deepEqual((await readdir(root)).sort(), [
+			"desktop",
+			"dist",
+			"docs",
+			"node_modules",
+			"package.json",
+			"runtime",
+			"src",
+		]);
+		assert.deepEqual(await readdir(join(root, "docs")), ["browser-tools.md"]);
 		// Fixture wiring is confined to this disposable app. Production has no mock mode.
 		await rename(
 			join(root, "desktop/main.cjs"),
@@ -583,6 +599,77 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 		await context.test(
 			"bundled backend preserves incompatible data and rejects unsupported build hosts",
 			() => backendFailures(checkout, dbPath),
+		);
+		await context.test(
+			"desktop:start opens the successful build without disturbing unrelated services",
+			async () => {
+				const mainPath = join(checkout, "desktop/main.cjs");
+				const main = await readFile(mainPath, "utf8");
+				const started = join(sandbox, "started.json");
+				const unrelated = spawn(
+					process.execPath,
+					[
+						"-e",
+						"process.title='Weft';console.log('ready');setInterval(()=>{},1000)",
+					],
+					{ stdio: ["ignore", "pipe", "ignore"] },
+				);
+				await new Promise<void>((resolve) =>
+					unrelated.stdout.once("data", () => resolve()),
+				);
+				try {
+					await writeFile(
+						mainPath,
+						`const fixtureElectron=require('electron');fixtureElectron.app.setPath('appData',${JSON.stringify(join(sandbox, "start-data"))});fixtureElectron.dialog.showErrorBox=(title,message)=>require('node:fs').writeFileSync(${JSON.stringify(started)},JSON.stringify({error:title+message}));fixtureElectron.app.on('browser-window-created',(_event,window)=>window.webContents.once('did-finish-load',()=>{require('node:fs').writeFileSync(${JSON.stringify(started)},JSON.stringify({url:new URL(window.webContents.getURL()).origin,ppid:process.ppid,pid:process.pid}));fixtureElectron.app.quit()}));\n${main}`,
+					);
+					await writeFile(
+						backendSource,
+						originalBackend.replace("if (import.meta.main)", "if (false)") +
+							`\nprocess.once('message',async m=>startBackend(m.databasePath,async()=>{throw Error('No model calls authorized')},async()=>Response.json({data:[]}),${JSON.stringify(join(sandbox, "empty-home"))}));\n`,
+					);
+					execFileSync("pnpm", ["desktop:start"], {
+						cwd: checkout,
+						stdio: "inherit",
+					});
+					for (
+						let i = 0;
+						i < 150 && !(await stat(started).catch(() => false));
+						i++
+					)
+						await delay(100);
+					const launched = JSON.parse(await readFile(started, "utf8"));
+					assert.equal(launched.ppid, 1);
+					for (let i = 0; i < 100; i++) {
+						try {
+							process.kill(launched.pid, 0);
+						} catch {
+							break;
+						}
+						await delay(100);
+					}
+					assert.throws(() => process.kill(launched.pid, 0));
+					for (let i = 0; i < 100; i++) {
+						try {
+							await fetch(launched.url);
+						} catch {
+							break;
+						}
+						await delay(100);
+					}
+					await assert.rejects(fetch(launched.url));
+					assert(unrelated.pid);
+					process.kill(unrelated.pid, 0);
+					assert.equal(
+						(await fetch(`http://127.0.0.1:${address.port}/page`)).status,
+						200,
+					);
+				} finally {
+					await writeFile(mainPath, main);
+					await writeFile(backendSource, originalBackend);
+					unrelated.kill();
+					await new Promise((resolve) => unrelated.once("exit", resolve));
+				}
+			},
 		);
 	} finally {
 		await closeApplication();
