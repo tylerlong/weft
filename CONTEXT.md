@@ -16,6 +16,8 @@
 
 服务方路由偏好见 [GLOSSARY.md](GLOSSARY.md#language)。
 
+已配置模型与可用模型的区别见 [GLOSSARY.md](GLOSSARY.md#language)。按当前 OpenRouter API key 发现可用模型的计划规格见 [#203](https://github.com/tylerlong/weft/issues/203)：更换 key 保留已配置模型、默认值和 Chat 选择；发现结果限制新选择，已有选择仍通过正常调用路径报告服务方拒绝。尚未实施，研究与上游验证见 [调查记录](docs/openrouter-model-availability-research.md)。
+
 | 术语                                          | 含义与区别                                                                                                                        |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | Agent                                         | 一次被接纳的任务执行，可包含多次模型和工具调用。统一使用 Agent，避免 Turn／Agent Run。                                            |
