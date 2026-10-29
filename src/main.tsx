@@ -1280,7 +1280,11 @@ function App() {
 			optionRequests.current.has(selected)
 		)
 			return;
-		let next = normalizeChatOptions(options, modelSettings.models);
+		let next = modelSettings.models.some(
+			(model) => model.id === options.modelId,
+		)
+			? options
+			: normalizeChatOptions(options, modelSettings.models);
 		if (next.modelId === null && modelSettings.defaultModelId)
 			next = {
 				...options,
@@ -1867,9 +1871,21 @@ function App() {
 												<ChatOptionPicker
 													options={options}
 													models={modelSettings?.models ?? []}
+													availableModels={
+														modelSettings?.discovery.status === "success"
+															? modelSettings.models.filter((model) =>
+																	modelSettings.discovery.models.some(
+																		(available) => available.id === model.id,
+																	),
+																)
+															: null
+													}
 													change={changeChatOptions}
 													saving={savingOptions.has(chat.id)}
-													disabled={modelSettingsError !== null}
+													disabled={
+														modelSettingsError !== null ||
+														modelSettings?.discovery.status !== "success"
+													}
 												/>
 											</div>
 										)}

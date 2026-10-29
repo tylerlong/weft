@@ -8,7 +8,7 @@ import {
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { type ApiError, appError, api as request } from "./api.ts";
-import type { ManagedModel, ModelSettings } from "./model-settings.ts";
+import type { ModelSettings } from "./model-settings.ts";
 
 const input =
 	"mt-2 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600";
@@ -33,7 +33,6 @@ export function ModelConfiguration({
 	const { t } = useTranslation();
 	const [key, setKey] = useState("");
 	const [query, setQuery] = useState("");
-	const [catalog, setCatalog] = useState<ManagedModel[] | null>(null);
 	const [pending, setPending] = useState(false);
 	const [adding, setAdding] = useState(false);
 	const [expanded, setExpanded] = useState(false);
@@ -119,6 +118,7 @@ export function ModelConfiguration({
 	const [keySaving, setKeySaving] = useState(false);
 	const [keySaved, setKeySaved] = useState(false);
 	const [catalogError, setCatalogError] = useState("");
+	const catalogRequest = useRef(0);
 	function reportModelFailures() {
 		setError(
 			[...modelRetries.current.values()].some(
@@ -197,6 +197,9 @@ export function ModelConfiguration({
 			try {
 				await request("/api/model-settings", "PUT", { apiKey: value });
 				credential.current.saved = value;
+				catalogRequest.current++;
+				setCatalogLoading(false);
+				setCatalogError("");
 				setKeySaved(credential.current.draft === value);
 				await refresh();
 				return true;
@@ -262,6 +265,11 @@ export function ModelConfiguration({
 			try {
 				const data = await request("/api/settings/credential", "GET");
 				const state = credential.current;
+				if (state.loaded && state.saved !== data.apiKey) {
+					catalogRequest.current++;
+					setCatalogLoading(false);
+					setCatalogError("");
+				}
 				if (
 					!state.loaded ||
 					(!keySave.current &&
@@ -379,33 +387,37 @@ export function ModelConfiguration({
 		if (!active) setExpanded(false);
 	}, [active]);
 	const [catalogLoading, setCatalogLoading] = useState(false);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: only modal openings refresh discovery
-	useEffect(() => {
-		if (!open) return;
-		let current = true;
+	async function discover() {
+		const version = ++catalogRequest.current;
 		setCatalogLoading(true);
 		setCatalogError("");
-		void request("/api/model-catalog", "POST")
-			.then(async (data) => {
-				if (current) setCatalog(data.models);
+		try {
+			await request("/api/model-catalog", "POST");
+		} catch (cause) {
+			if (version !== catalogRequest.current) return;
+			setCatalogError(
+				appError(cause).code === "managementAuthorizationRequired"
+					? "managementAuthorizationRequired"
+					: "catalogReadFailed",
+			);
+		} finally {
+			if (version === catalogRequest.current) {
 				await refresh();
-			})
-			.catch((cause) => {
-				if (current)
-					setCatalogError(
-						appError(cause).code === "managementAuthorizationRequired"
-							? "managementAuthorizationRequired"
-							: "catalogReadFailed",
-					);
-			})
-			.finally(() => {
-				if (current) setCatalogLoading(false);
-			});
-		return () => {
-			current = false;
-		};
-		// Only closed-to-open transitions refresh discovery, not configuration saves.
+				setCatalogLoading(false);
+			}
+		}
+	}
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only modal openings refresh discovery
+	useEffect(() => {
+		if (open) void discover();
 	}, [open]);
+	const catalog = settings?.discovery.models;
+	const discoveryStatus = settings?.discovery.status;
+	const modelEditingDisabled =
+		pending ||
+		catalogLoading ||
+		!!catalogError ||
+		discoveryStatus !== "success";
 	const matches = catalog?.filter(
 		(model) =>
 			!settings?.models.some((saved) => saved.id === model.id) &&
@@ -542,6 +554,14 @@ export function ModelConfiguration({
 									<span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
 										{model.name}
 										<small className="block text-neutral-600">{model.id}</small>
+										{discoveryStatus === "success" &&
+											!catalog?.some(
+												(available) => available.id === model.id,
+											) && (
+												<small className="block text-amber-800">
+													{t("modelUnavailable")}
+												</small>
+											)}
 									</span>
 									{settings.defaultModelId === model.id ? (
 										<span className="shrink-0 text-sm text-neutral-600">
@@ -551,7 +571,10 @@ export function ModelConfiguration({
 										<button
 											type="button"
 											className={`${button} shrink-0`}
-											disabled={pending}
+											disabled={
+												modelEditingDisabled ||
+												!catalog?.some((available) => available.id === model.id)
+											}
 											aria-label={t("setDefaultModel", { name: model.name })}
 											title={t("setDefaultModel", { name: model.name })}
 											onClick={() =>
@@ -566,7 +589,7 @@ export function ModelConfiguration({
 									<button
 										type="button"
 										className={button}
-										disabled={pending}
+										disabled={modelEditingDisabled}
 										aria-label={t("removeModel", { name: model.name })}
 										title={t("removeModel", { name: model.name })}
 										onClick={() =>
@@ -587,7 +610,7 @@ export function ModelConfiguration({
 									ref={addButton}
 									type="button"
 									className={button}
-									disabled={pending}
+									disabled={modelEditingDisabled}
 									onClick={() => setAdding(true)}
 								>
 									{t("addModel")}
@@ -621,13 +644,13 @@ export function ModelConfiguration({
 												)
 													setExpanded(false);
 											}}
-											disabled={pending}
+											disabled={modelEditingDisabled}
 											onChange={(event) => {
 												setQuery(event.target.value);
 												setHighlighted(null);
 											}}
 											onKeyDown={(event) => {
-												if (pending) return;
+												if (modelEditingDisabled) return;
 												if (
 													event.key === "ArrowDown" ||
 													event.key === "ArrowUp"
@@ -718,7 +741,7 @@ export function ModelConfiguration({
 																type="button"
 																role="option"
 																aria-selected={highlighted === model.id}
-																disabled={pending}
+																disabled={modelEditingDisabled}
 																tabIndex={-1}
 																className={`w-full px-3 py-2 text-left [overflow-wrap:anywhere] hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-blue-600 ${highlighted === model.id ? "bg-blue-50 outline-2 -outline-offset-2 outline-blue-600" : ""}`}
 																onClick={() => void addModel(model.id)}
@@ -737,23 +760,37 @@ export function ModelConfiguration({
 								</>
 							)}
 						</div>
-						{catalogLoading && (
-							<p
-								role="status"
-								aria-hidden={adding}
-								className={adding ? "invisible" : undefined}
-							>
-								{t("loading")}
-							</p>
+						{(catalogLoading || discoveryStatus === "loading") && (
+							<p role="status">{t("modelDiscoveryLoading")}</p>
 						)}
-						{catalogError && (
-							<p
-								role="alert"
-								aria-hidden={adding}
-								className={`mt-2 text-red-700 ${adding ? "invisible" : ""}`}
+						{discoveryStatus === "no-key" && (
+							<p role="status">{t("modelDiscoveryNoKey")}</p>
+						)}
+						{discoveryStatus === "success" && catalog?.length === 0 && (
+							<p role="status">{t("modelDiscoveryEmpty")}</p>
+						)}
+						{(catalogError || discoveryStatus === "error") && (
+							<div role="alert" className="mt-2 text-red-700">
+								{t(catalogError || "catalogReadFailed")}{" "}
+								<button
+									type="button"
+									className={button}
+									disabled={catalogLoading}
+									onClick={() => void discover()}
+								>
+									{t("retry")}
+								</button>
+							</div>
+						)}
+						{!catalogError && discoveryStatus !== "error" && (
+							<button
+								type="button"
+								className={`${button} mt-2`}
+								disabled={catalogLoading || discoveryStatus === "loading"}
+								onClick={() => void discover()}
 							>
-								{t(catalogError || "catalogReadFailed")}
-							</p>
+								{t("retry")}
+							</button>
 						)}
 						{error && (
 							<p role="alert" className="mt-3 break-words text-red-700">

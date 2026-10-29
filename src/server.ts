@@ -571,7 +571,7 @@ export function createServer(
 		override?: Record<string, unknown>,
 	) => {
 		let options = chatOptions(id);
-		const { models, providerRouting } = modelSettings.read();
+		const { models, providerRouting, discovery } = modelSettings.read();
 		const overrides: Record<string, unknown>[] = [];
 		while (agentId !== undefined) {
 			const source = agentSource(agentId);
@@ -615,11 +615,15 @@ export function createServer(
 			inputModalities: model.inputModalities,
 			reasoningEffort: options.reasoningEffort,
 			targetFolders: currentFolders(id),
-			models: models.map((model) => ({
-				id: model.id,
-				name: model.name,
-				reasoningEfforts: supportedReasoningEfforts(model) ?? [],
-			})),
+			models: models
+				.filter((model) =>
+					discovery.models.some((available) => available.id === model.id),
+				)
+				.map((model) => ({
+					id: model.id,
+					name: model.name,
+					reasoningEfforts: supportedReasoningEfforts(model) ?? [],
+				})),
 		};
 	};
 
@@ -1573,6 +1577,8 @@ export function createServer(
 								typeof value.reasoning_effort !== "string")
 						)
 							throw new InputError("invalidInput");
+						if (value.model_id !== undefined)
+							modelSettings.requireAvailable(value.model_id);
 						currentConfig(id, agentId, value);
 						const atLimit = () => {
 							const limit = Number(
@@ -1624,9 +1630,12 @@ export function createServer(
 							status: "failed",
 							result: JSON.stringify({
 								error:
-									error instanceof InputError || error instanceof SyntaxError
+									error instanceof InputError ||
+									error instanceof ModelSettingsError ||
+									error instanceof SyntaxError
 										? caughtError(
-												error instanceof InputError
+												error instanceof InputError ||
+													error instanceof ModelSettingsError
 													? error
 													: new InputError("invalidInput"),
 												"invalidInput",
@@ -2036,8 +2045,12 @@ export function createServer(
 			try {
 				const id = decodeURIComponent(path.slice("/api/models/".length));
 				json(response, 200, modelSettings.remove(id));
-			} catch {
-				json(response, 500, errorBody("modelSettingsFailed"));
+			} catch (error) {
+				json(
+					response,
+					error instanceof ModelSettingsError ? 400 : 500,
+					caughtError(error, "modelSettingsFailed"),
+				);
 			}
 			return;
 		}
@@ -2802,6 +2815,14 @@ export function createServer(
 						input.modelId === undefined ? options.modelId : input.modelId;
 					if (modelId !== null && typeof modelId !== "string")
 						throw new InputError("invalidModel");
+					const changingModel = modelId !== options.modelId;
+					const changingEffort =
+						input.reasoningEffort !== undefined &&
+						input.reasoningEffort !== options.reasoningEffort;
+					if (changingModel || changingEffort) {
+						modelSettings.requireDiscovery();
+						if (modelId !== null) modelSettings.requireAvailable(modelId);
+					}
 					const selected = modelSettings
 						.read()
 						.models.find((model) => model.id === modelId);
@@ -2815,8 +2836,7 @@ export function createServer(
 						throw new InputError("invalidReasoning");
 					if (!selected) effort = null;
 					else if (
-						(input.modelId !== undefined ||
-							input.reasoningEffort !== undefined) &&
+						(changingModel || changingEffort) &&
 						effort !== null &&
 						!supportedReasoningEfforts(selected)?.includes(effort)
 					) {
@@ -2848,7 +2868,9 @@ export function createServer(
 				} catch (error) {
 					json(
 						response,
-						error instanceof InputError ? 400 : 500,
+						error instanceof InputError || error instanceof ModelSettingsError
+							? 400
+							: 500,
 						caughtError(error, "chatWriteFailed"),
 					);
 				}

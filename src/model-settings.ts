@@ -8,7 +8,12 @@ export type ManagedModel = {
 	reasoningRequired: boolean;
 };
 export type ProviderRouting = "default" | "price" | "throughput" | "latency";
+export type ModelDiscovery = {
+	status: "no-key" | "loading" | "success" | "error";
+	models: ManagedModel[];
+};
 export type ModelSettings = {
+	discovery: ModelDiscovery;
 	providerRouting: ProviderRouting;
 	apiKeyConfigured: boolean;
 	defaultModelId: string | null;
@@ -28,6 +33,8 @@ export function createModelSettings(
 	fetchCatalog: typeof fetch,
 	notifyChange: () => void,
 ) {
+	let discovery: ModelDiscovery = { status: "no-key", models: [] };
+	let generation = 0;
 	function read(): ModelSettings {
 		const settings = database
 			.prepare(
@@ -35,6 +42,7 @@ export function createModelSettings(
 			)
 			.get();
 		return {
+			discovery,
 			providerRouting: settings?.provider_routing as ProviderRouting,
 			apiKeyConfigured: !!settings?.api_key,
 			defaultModelId:
@@ -51,15 +59,22 @@ export function createModelSettings(
 				})),
 		};
 	}
-	let catalog: ManagedModel[] | undefined;
 	let catalogLoading: Promise<ManagedModel[]> | undefined;
 	const loadCatalog = (refresh = false): Promise<ManagedModel[]> => {
-		if (!refresh && catalog) return Promise.resolve(catalog);
+		const key = String(readCredential());
+		if (!key) return Promise.resolve([]);
 		if (catalogLoading) return catalogLoading;
-		catalogLoading = (async () => {
+		if (!refresh && discovery.status === "success")
+			return Promise.resolve(discovery.models);
+		if (!refresh && discovery.status === "error")
+			return Promise.reject(new ModelSettingsError("modelCatalogFailed"));
+		const requestGeneration = generation;
+		discovery = { status: "loading", models: [] };
+		notifyChange();
+		const operation = (async () => {
 			const response = await fetchCatalog(
-				"https://openrouter.ai/api/v1/models?sort=most-popular&limit=100&output_modalities=text",
-				{ method: "GET" },
+				"https://openrouter.ai/api/v1/models/user?output_modalities=text",
+				{ method: "GET", headers: { Authorization: `Bearer ${key}` } },
 			);
 			if (!response.ok) throw new ModelSettingsError("modelCatalogFailed");
 			const body = await response.json();
@@ -86,7 +101,6 @@ export function createModelSettings(
 				throw new ModelSettingsError("modelCatalogFailed");
 			const next: ManagedModel[] = rows
 				.filter((row) => row.architecture?.output_modalities?.includes("text"))
-				.slice(0, 100)
 				.map((row) => ({
 					id: row.id,
 					name: row.name,
@@ -107,6 +121,7 @@ export function createModelSettings(
 						: {}),
 					reasoningRequired: row.reasoning?.mandatory === true,
 				}));
+			if (requestGeneration !== generation) return discovery.models;
 			database.exec("BEGIN");
 			try {
 				// Read membership after the network wait, preserving concurrent additions/removals.
@@ -123,19 +138,37 @@ export function createModelSettings(
 				database.exec("ROLLBACK");
 				throw error;
 			}
-			catalog = next;
+			discovery = { status: "success", models: next };
 			notifyChange();
 			return next;
-		})().finally(() => {
-			catalogLoading = undefined;
-		});
-		return catalogLoading;
+		})()
+			.catch(() => {
+				if (requestGeneration !== generation) return discovery.models;
+				discovery = { status: "error", models: [] };
+				notifyChange();
+				throw new ModelSettingsError("modelCatalogFailed");
+			})
+			.finally(() => {
+				if (catalogLoading === operation) catalogLoading = undefined;
+			});
+		catalogLoading = operation;
+		return operation;
 	};
 
 	const readCredential = () =>
 		database.prepare("SELECT api_key FROM settings WHERE id=1").get()
 			?.api_key ?? "";
+	const requireDiscovery = () => {
+		if (discovery.status !== "success")
+			throw new ModelSettingsError("modelCatalogFailed");
+	};
+	const requireAvailable = (id: unknown) => {
+		requireDiscovery();
+		if (!discovery.models.some((model) => model.id === id))
+			throw new ModelSettingsError("invalidModel");
+	};
 	const update = (input: Record<string, unknown>) => {
+		const previousKey = readCredential();
 		if (
 			input.apiKey !== undefined &&
 			(typeof input.apiKey !== "string" || /[\r\n]/.test(input.apiKey))
@@ -155,6 +188,21 @@ export function createModelSettings(
 					.get(input.defaultModelId))
 		)
 			throw new ModelSettingsError("invalidModel");
+		if (
+			input.defaultModelId !== undefined &&
+			input.defaultModelId !== read().defaultModelId
+		) {
+			const nextKey =
+				input.removeApiKey === true
+					? ""
+					: typeof input.apiKey === "string"
+						? input.apiKey.trim()
+						: previousKey;
+			if (nextKey !== previousKey)
+				throw new ModelSettingsError("modelCatalogFailed");
+			requireDiscovery();
+			if (input.defaultModelId !== null) requireAvailable(input.defaultModelId);
+		}
 		if (
 			Object.hasOwn(input, "providerRouting") &&
 			!["default", "price", "throughput", "latency"].includes(
@@ -183,6 +231,15 @@ export function createModelSettings(
 			database.exec("ROLLBACK");
 			throw error;
 		}
+		if (readCredential() !== previousKey) {
+			generation++;
+			catalogLoading = undefined;
+			discovery = {
+				status: readCredential() ? "loading" : "no-key",
+				models: [],
+			};
+			void loadCatalog().catch(() => {});
+		}
 		notifyChange();
 		return read();
 	};
@@ -193,7 +250,8 @@ export function createModelSettings(
 		if (existing.models.some((model) => model.id === id)) {
 			return { ...existing, firstModelAdded: false };
 		}
-		const model = catalog?.find((model) => model.id === id);
+		requireAvailable(id);
+		const model = discovery.models.find((model) => model.id === id);
 		if (!model) throw new ModelSettingsError("invalidModel");
 		const { name, ...metadata } = model;
 		delete (metadata as Partial<ManagedModel>).id;
@@ -220,6 +278,7 @@ export function createModelSettings(
 		return { ...read(), firstModelAdded };
 	};
 	const remove = (id: string) => {
+		requireDiscovery();
 		database.exec("BEGIN");
 		try {
 			const settings = read();
@@ -230,7 +289,7 @@ export function createModelSettings(
 			if (settings.defaultModelId === id) {
 				const remaining = settings.models.filter((model) => model.id !== id);
 				const replacement =
-					catalog?.find((model) =>
+					discovery.models.find((model) =>
 						remaining.some((enabled) => enabled.id === model.id),
 					) ?? remaining[0];
 				database
@@ -245,5 +304,15 @@ export function createModelSettings(
 		notifyChange();
 		return read();
 	};
-	return { read, readCredential, update, loadCatalog, add, remove };
+	if (readCredential()) void loadCatalog().catch(() => {});
+	return {
+		read,
+		readCredential,
+		update,
+		loadCatalog,
+		add,
+		remove,
+		requireDiscovery,
+		requireAvailable,
+	};
 }

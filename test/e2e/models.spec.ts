@@ -1,7 +1,7 @@
 import { expectEffort, expectModel, selectEffort } from "./chat-picker.ts";
 import { expect, test } from "./fixtures.ts";
 
-test("mandatory Settings explains reload recovery after an initial catalog failure", async ({
+test("mandatory Settings requires a key before model discovery and recovers through Retry", async ({
 	page,
 	app,
 }) => {
@@ -15,60 +15,52 @@ test("mandatory Settings explains reload recovery after an initial catalog failu
 			data: { name: "First chat" },
 		})
 	).json();
+	await page.request.post(`${app.url}/api/model-catalog`);
+	await page.request.delete(`${app.url}/api/models/test`);
 	await page.request.put(`${app.url}/api/model-settings`, {
 		data: { removeApiKey: true },
 	});
-	await page.request.delete(`${app.url}/api/models/test`);
-	await page.route("**/api/model-catalog", (route) =>
-		route.fulfill({ status: 502, json: {} }),
-	);
 	await page.goto(`${app.url}/?chat=${chat.id}`);
 	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
-	await expect(settings.getByRole("alert")).toHaveText(
-		"Unable to load popular models. Close and reopen Settings, or reload the page if Settings cannot close, to retry.",
-	);
 	const close = settings.getByRole("button", { name: "Close", exact: true });
-	await expect(close).toBeEnabled();
+	const add = settings.getByRole("button", { name: "Add model", exact: true });
+	await expect(add).toBeDisabled();
+	await expect(
+		settings.getByText("Save an API key to discover available models.", {
+			exact: true,
+		}),
+	).toBeVisible();
 	await page.keyboard.press("Escape");
 	await expect(settings).toBeVisible();
-	await expect(
-		settings.getByRole("button", { name: /Search|Refresh/ }),
-	).toHaveCount(0);
-	await page.unroute("**/api/model-catalog");
-	await page.reload();
-	await settings
-		.getByRole("button", { name: "Add model", exact: true })
-		.click();
-	await expect(
-		settings
-			.getByRole("listbox", { name: "Popular models" })
-			.getByRole("option"),
-	).toHaveCount(2);
-	await expect(settings.getByRole("alert")).toHaveCount(0);
-	const filter = settings.getByRole("combobox", {
-		name: "Search models by name or ID",
-	});
-	await filter.fill("second");
-	await filter.press("Escape");
-	await expect(filter).toHaveCount(0);
-	await expect(settings).toBeVisible();
-	await page.keyboard.press("Escape");
-	await expect(settings).toBeVisible();
-	await settings
-		.getByRole("button", { name: "Add model", exact: true })
-		.click();
-	await expect(filter).toHaveValue("");
+	app.failCatalog();
 	await settings
 		.getByLabel("OpenRouter API key", { exact: true })
 		.fill("setup-secret");
 	await settings.getByRole("heading", { name: "Models", exact: true }).click();
-	await expect(close).toBeEnabled();
-	await expect(filter).toBeEnabled();
-	await filter.focus();
+	await expect(settings.getByRole("alert")).toContainText(
+		"Unable to discover available models.",
+	);
+	await expect(add).toBeDisabled();
+	await settings.getByRole("button", { name: "Retry", exact: true }).click();
+	await expect(add).toBeEnabled();
+	await add.click();
+	const filter = settings.getByRole("combobox", {
+		name: "Search models by name or ID",
+	});
+	await expect(
+		settings
+			.getByRole("listbox", { name: "Available models" })
+			.getByRole("option"),
+	).toHaveCount(2);
+	await filter.fill("second");
+	await filter.press("Escape");
+	await expect(filter).toHaveCount(0);
+	await expect(settings).toBeVisible();
+	await add.click();
+	await expect(filter).toHaveValue("");
 	await settings
 		.getByRole("option", { name: "Second second", exact: true })
 		.click();
-	await expect(close).toBeEnabled();
 	await close.click();
 	await expectModel(page, "second");
 	await page.getByLabel("Prompt", { exact: true }).fill("Recovered setup");
@@ -203,22 +195,25 @@ test("settings retain input on save failure and retry catalog by reopening", asy
 	await page.getByRole("tab", { name: "Models", exact: true }).click();
 	await expect(
 		dialog.getByText(
-			"Unable to load popular models. Close and reopen Settings, or reload the page if Settings cannot close, to retry.",
+			"Unable to discover available models. Edit the API key or retry.",
 		),
 	).toBeVisible();
-	await dialog.getByRole("button", { name: "Add model", exact: true }).click();
 	await expect(
-		dialog.getByRole("option", { name: "Second second", exact: true }),
-	).toBeVisible();
+		dialog.getByRole("button", { name: "Add model", exact: true }),
+	).toBeDisabled();
+	await expect(
+		dialog.getByRole("listbox", { name: "Available models" }),
+	).toHaveCount(0);
 	await page.unroute("**/api/model-catalog");
 	await dialog.getByRole("button", { name: "Close", exact: true }).click();
 	await page.getByRole("button", { name: "Settings", exact: true }).click();
 	await page.getByRole("tab", { name: "Models", exact: true }).click();
 	await expect(
 		dialog.getByText(
-			"Unable to load popular models. Close and reopen Settings, or reload the page if Settings cannot close, to retry.",
+			"Unable to discover available models. Edit the API key or retry.",
 		),
 	).toHaveCount(0);
+	await dialog.getByRole("button", { name: "Add model", exact: true }).click();
 	await expect(
 		dialog.getByRole("option", { name: "Second second", exact: true }),
 	).toBeVisible();
@@ -252,7 +247,7 @@ test("each opening refreshes once; the combobox filters unenabled ranked models 
 		name: "Search models by name or ID",
 	});
 	const options = dialog
-		.getByRole("listbox", { name: "Popular models" })
+		.getByRole("listbox", { name: "Available models" })
 		.getByRole("option");
 	await expect(filter).toBeFocused();
 	await expect(options).toHaveText(["Secondsecond", "Thirdthird"]);
@@ -274,7 +269,7 @@ test("each opening refreshes once; the combobox filters unenabled ranked models 
 	await filter.fill("absent");
 	await expect(
 		dialog.getByText(
-			"No matching models among the 100 most popular models. Enabled models are excluded.",
+			"No matching available models. Configured models are excluded.",
 		),
 	).toBeVisible();
 	await filter.press("Enter");
@@ -360,13 +355,15 @@ test("initial catalog failure differs from an empty filter and existing models r
 	const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
 	await expect(
 		dialog.getByText(
-			"Unable to load popular models. Close and reopen Settings, or reload the page if Settings cannot close, to retry.",
+			"Unable to discover available models. Edit the API key or retry.",
 		),
 	).toBeVisible();
-	await dialog.getByRole("button", { name: "Add model", exact: true }).click();
+	await expect(
+		dialog.getByRole("button", { name: "Add model", exact: true }),
+	).toBeDisabled();
 	await expect(
 		dialog.getByText(
-			"No matching models among the 100 most popular models. Enabled models are excluded.",
+			"No matching available models. Configured models are excluded.",
 		),
 	).toHaveCount(0);
 	await expect(
@@ -386,8 +383,11 @@ test("initial catalog failure differs from an empty filter and existing models r
 	await page.unroute("**/api/model-catalog");
 	await page.getByRole("button", { name: "Settings", exact: true }).click();
 	await page.getByRole("tab", { name: "Models", exact: true }).click();
+	await dialog.getByRole("button", { name: "Add model", exact: true }).click();
 	await expect(
-		dialog.getByRole("listbox", { name: "Popular models" }).getByRole("option"),
+		dialog
+			.getByRole("listbox", { name: "Available models" })
+			.getByRole("option"),
 	).toHaveCount(1);
 });
 
@@ -448,7 +448,9 @@ test("ranking changes preserve selected default and historical model outside top
 	await page.getByRole("tab", { name: "Models", exact: true }).click();
 	await dialog.getByRole("button", { name: "Add model", exact: true }).click();
 	await expect(
-		dialog.getByRole("listbox", { name: "Popular models" }).getByRole("option"),
+		dialog
+			.getByRole("listbox", { name: "Available models" })
+			.getByRole("option"),
 	).toHaveCount(100);
 	await expect(
 		dialog

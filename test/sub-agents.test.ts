@@ -1094,6 +1094,7 @@ for (const choice of [
 				f.chat.id,
 			);
 			db.close();
+			assert.equal((await f.post("/api/model-catalog", {})).status, 200);
 			assert.equal((await f.wait(await f.ask("root"))).status, "succeeded");
 			for (const prompt of ["middle", "leaf"]) {
 				const request = requests.find(
@@ -1192,6 +1193,7 @@ test("valid explicit model survives invalid current root model during creation a
 			"INSERT INTO managed_models(id,name,metadata) VALUES('replacement','Replacement',?)",
 		).run(JSON.stringify({ supportedEfforts: ["low"] }));
 		db.close();
+		assert.equal((await f.post("/api/model-catalog", {})).status, 200);
 		const rootId = await f.ask("invalidate root");
 		await started.promise;
 		const edit = new DatabaseSync(f.path);
@@ -2012,6 +2014,7 @@ for (const maskKeys of [false, true]) {
 				}),
 			);
 			db.close();
+			assert.equal((await f.post("/api/model-catalog", {})).status, 200);
 			const rootId = await f.ask("root");
 			await Promise.race([
 				childStarted.promise,

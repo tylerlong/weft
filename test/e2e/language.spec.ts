@@ -92,7 +92,9 @@ test("failed and ambiguous language saves reconcile to server and existing error
 	await dialog.getByRole("tab", { name: "Models", exact: true }).click();
 	await dialog.getByRole("button", { name: "Add model", exact: true }).click();
 	await expect(
-		dialog.getByRole("listbox", { name: "Popular models" }).getByRole("option"),
+		dialog
+			.getByRole("listbox", { name: "Available models" })
+			.getByRole("option"),
 	).toHaveCount(1);
 	await expect(
 		dialog.getByRole("status").filter({ hasText: /.+/ }),

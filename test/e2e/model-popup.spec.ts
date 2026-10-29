@@ -31,7 +31,7 @@ for (const size of [
 		const search = dialog.getByRole("combobox", {
 			name: "Search models by name or ID",
 		});
-		const list = dialog.getByRole("listbox", { name: "Popular models" });
+		const list = dialog.getByRole("listbox", { name: "Available models" });
 		async function capture(state: string) {
 			if (!process.env.MODEL_POPUP_SCREENSHOTS) return;
 			await mkdir("/tmp/weft-80-evidence", { recursive: true });
@@ -91,7 +91,7 @@ for (const size of [
 		await capture("above-long-keyboard");
 		await search.fill("missing");
 		await expect(dialog.getByRole("status")).toHaveText(
-			"No matching models among the 100 most popular models. Enabled models are excluded.",
+			"No matching available models. Configured models are excluded.",
 		);
 		expect(await dialog.boundingBox()).toEqual(bounds);
 		await capture("no-match");
@@ -199,10 +199,10 @@ test("addition loading and initial failure stay local with Chinese search and no
 	await page.getByRole("button", { name: "设置", exact: true }).click();
 	await page.getByRole("tab", { name: "模型", exact: true }).click();
 	const dialog = page.getByRole("dialog", { name: "设置", exact: true });
-	await expect(dialog.getByRole("status")).toHaveText("加载中…");
-	const loadingBounds = await dialog.boundingBox();
-	await dialog.getByRole("button", { name: "添加模型", exact: true }).click();
-	expect(await dialog.boundingBox()).toEqual(loadingBounds);
+	await expect(dialog.getByRole("status")).toHaveText("正在发现可用模型…");
+	await expect(
+		dialog.getByRole("button", { name: "添加模型", exact: true }),
+	).toBeDisabled();
 	async function capture(state: string) {
 		if (!process.env.MODEL_POPUP_SCREENSHOTS) return;
 		await mkdir("/tmp/weft-80-evidence", { recursive: true });
@@ -211,14 +211,14 @@ test("addition loading and initial failure stay local with Chinese search and no
 		});
 	}
 	const search = dialog.getByRole("combobox", { name: "按名称或 ID 搜索模型" });
-	await expect(search).toBeFocused();
-	await expect(dialog.getByRole("status")).toHaveText("加载中…");
+	await expect(search).toHaveCount(0);
 	await capture("loading");
 	release();
-	await expect(dialog.getByRole("alert")).toContainText("加载热门模型失败");
+	await expect(dialog.getByRole("alert")).toContainText("发现可用模型失败");
 	await capture("initial-failure");
-	await search.press("Escape");
-	await expect(search).toBeHidden();
+	await expect(
+		dialog.getByRole("button", { name: "添加模型", exact: true }),
+	).toBeDisabled();
 	await dialog.getByRole("button", { name: "关闭", exact: true }).click();
 	await expect(dialog).toBeHidden();
 	await page.unroute("**/api/model-catalog");
@@ -227,7 +227,7 @@ test("addition loading and initial failure stay local with Chinese search and no
 	await dialog.getByRole("button", { name: "添加模型", exact: true }).click();
 	await search.fill("absent");
 	await expect(dialog.getByRole("status")).toHaveText(
-		"前 100 个热门模型中没有匹配模型。已启用的模型不在候选中。",
+		"没有匹配的可用模型。已配置的模型不在候选中。",
 	);
 	await capture("no-match");
 });

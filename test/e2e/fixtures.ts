@@ -18,6 +18,8 @@ export const test = base.extend<{
 			}[],
 		) => void;
 		folder: string;
+		failCatalog: () => void;
+		holdCatalog: () => { entered: Promise<void>; release: () => void };
 		failModel: (
 			kind?: "http" | "network",
 			body?: string,
@@ -176,6 +178,20 @@ export const test = base.extend<{
 			},
 			{ id: "second", name: "Second" },
 		];
+		let catalogFailure = false;
+		let catalogGate: { entered: () => void; wait: Promise<void> } | undefined;
+		function holdCatalog() {
+			let enter!: () => void;
+			let release!: () => void;
+			const entered = new Promise<void>((resolve) => {
+				enter = resolve;
+			});
+			const wait = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			catalogGate = { entered: enter, wait };
+			return { entered, release };
+		}
 		const originalHome = process.env.HOME;
 		process.env.HOME = folder;
 		const initializeToken = async (url: string) =>
@@ -271,13 +287,24 @@ export const test = base.extend<{
 					});
 				},
 				join(folder, "db.sqlite"),
-				async () =>
-					Response.json({
+				async () => {
+					const current = catalogGate;
+					catalogGate = undefined;
+					if (current) {
+						current.entered();
+						await current.wait;
+					}
+					if (catalogFailure) {
+						catalogFailure = false;
+						return new Response("discovery failed", { status: 503 });
+					}
+					return Response.json({
 						data: catalogModels.map((model) => ({
 							...model,
 							architecture: { output_modalities: ["text"] },
 						})),
-					}),
+					});
+				},
 				async (name, args, roots, signal) => {
 					const next = toolQueue.shift();
 					if (!next) return executeTool(name, args, roots);
@@ -310,6 +337,10 @@ export const test = base.extend<{
 					catalogModels = models;
 				},
 				folder,
+				failCatalog: () => {
+					catalogFailure = true;
+				},
+				holdCatalog,
 				holdModel,
 				holdTool,
 				streamModel,

@@ -61,7 +61,17 @@ async function fixture(
 			return completedResponse({ output: await model(body) });
 		},
 		path,
-		undefined,
+		async () =>
+			Response.json({
+				data: [
+					{
+						id: "test",
+						name: "test",
+						architecture: { output_modalities: ["text"] },
+						reasoning: { supported_efforts: ["low", "medium", "high"] },
+					},
+				],
+			}),
 		undefined,
 		"a".repeat(64),
 		directory,

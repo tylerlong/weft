@@ -46,9 +46,15 @@ async function fixture(transport: typeof fetch, apiKey = "routing-secret") {
 		const server = createServer(
 			transport,
 			path,
-			async () => {
-				throw Error("Unexpected catalog request");
-			},
+			async () =>
+				Response.json({
+					data: ["child-model", "root-model"].map((id) => ({
+						id,
+						name: id,
+						architecture: { output_modalities: ["text"] },
+						reasoning: { supported_efforts: ["low", "medium", "high"] },
+					})),
+				}),
 			async () => ({ status: "succeeded", result: "controlled result" }),
 			"a".repeat(64),
 			directory,

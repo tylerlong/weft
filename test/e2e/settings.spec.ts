@@ -561,12 +561,12 @@ test("Close hides the candidate portal while waiting for another tab to save", a
 	await expect.poll(() => writes).toBe(1);
 	await dialog.getByRole("button", { name: "Add model", exact: true }).click();
 	await expect(
-		dialog.getByRole("listbox", { name: "Popular models", exact: true }),
+		dialog.getByRole("listbox", { name: "Available models", exact: true }),
 	).toBeVisible();
 	await dialog.getByRole("button", { name: "Close", exact: true }).click();
 	await expect(dialog).toBeVisible();
 	await expect(
-		dialog.getByRole("listbox", { name: "Popular models", exact: true }),
+		dialog.getByRole("listbox", { name: "Available models", exact: true }),
 	).toHaveCount(0);
 	expect(writes).toBe(1);
 	release();

@@ -69,7 +69,7 @@ for (const initialPath of ["file", "dangling alias", "dangling chain"] as const)
 		};
 		const start = (database: string, port: number) => {
 			const preload =
-				"globalThis.fetch=async (_url,init)=>{console.log('model-request');return new Promise((_,reject)=>init.signal.addEventListener('abort',()=>reject(init.signal.reason),{once:true}))}";
+				"globalThis.fetch=async (_url,init)=>{if(String(_url).includes('/models/user'))return Response.json({data:[]});console.log('model-request');return new Promise((_,reject)=>init.signal.addEventListener('abort',()=>reject(init.signal.reason),{once:true}))}";
 			const child = spawn(
 				process.execPath,
 				[

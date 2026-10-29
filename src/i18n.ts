@@ -295,11 +295,16 @@ export const resources = {
 			default: "Default",
 			removeModel: "Remove model {{name}}",
 			filterModels: "Search models by name or ID",
-			popularModels: "Popular models",
+			popularModels: "Available models",
+			modelUnavailable: "Unavailable for this API key",
+			modelDiscoveryNoKey: "Save an API key to discover available models.",
+			modelDiscoveryLoading: "Discovering available models…",
+			modelDiscoveryEmpty:
+				"No available text models were returned for this API key.",
 			noMatchingModels:
-				"No matching models among the 100 most popular models. Enabled models are excluded.",
+				"No matching available models. Configured models are excluded.",
 			catalogReadFailed:
-				"Unable to load popular models. Close and reopen Settings, or reload the page if Settings cannot close, to retry.",
+				"Unable to discover available models. Edit the API key or retry.",
 			configurationReadFailed: "Unable to read model settings. Please retry.",
 			configurationSaveFailed: "Unable to save model settings. Please retry.",
 			addModel: "Add model",
@@ -624,11 +629,13 @@ export const resources = {
 			default: "默认",
 			removeModel: "移除模型 {{name}}",
 			filterModels: "按名称或 ID 搜索模型",
-			popularModels: "热门模型",
-			noMatchingModels:
-				"前 100 个热门模型中没有匹配模型。已启用的模型不在候选中。",
-			catalogReadFailed:
-				"加载热门模型失败。请关闭并重新打开设置以重试；若设置无法关闭，请重新加载页面。",
+			popularModels: "可用模型",
+			modelUnavailable: "此 API 密钥不可用",
+			modelDiscoveryNoKey: "请先保存 API 密钥以发现可用模型。",
+			modelDiscoveryLoading: "正在发现可用模型…",
+			modelDiscoveryEmpty: "此 API 密钥未返回可用的文本模型。",
+			noMatchingModels: "没有匹配的可用模型。已配置的模型不在候选中。",
+			catalogReadFailed: "发现可用模型失败。请修改 API 密钥或重试。",
 			configurationReadFailed: "读取模型配置失败，请重试。",
 			configurationSaveFailed: "保存模型配置失败，请重试。",
 			addModel: "添加模型",

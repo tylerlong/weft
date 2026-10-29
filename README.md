@@ -20,9 +20,11 @@ pnpm desktop:start
 ```
 
 This builds and opens `desktop-output/Weft.app`. Afterward, open it from Finder; the built app does not need a terminal, the checkout, pnpm, or a separate Node installation. The first build downloads its runtimes. There is no automatic updater; quit Weft and rebuild to apply source changes.
-1. Open **Settings → Models**, enter your OpenRouter API key, and add a model.
+1. Open **Settings → Models**, save your OpenRouter API key, wait for discovery, and add an available model.
 2. Create a **Project** and select the folders you want to work with.
 3. Create a **Chat**, choose a model and reasoning level, and submit a task.
+
+Discovery uses your saved key’s access settings. It refreshes at startup, when Settings opens, after a different key is saved, and on Retry. Changing keys preserves configured models and Chat selections; see [Models](docs/user-guide.md#models-and-provider-routing) for unavailable models and recovery.
 
 Install the tools your tasks need, such as Git, project runtimes, or Docker. Chrome or Edge is needed only for browser tasks. For the server/browser alternative, see [running from source](docs/development.md#server-and-browser-workflow).
 

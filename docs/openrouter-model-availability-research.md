@@ -1,6 +1,6 @@
 # OpenRouter model availability investigation
 
-Investigated 2026-10-29. Documentation findings only; authenticated observations are recorded separately below when available. No product implementation is included.
+Investigated 2026-10-29. Documentation findings only; authenticated observations are recorded separately below when available. The investigation itself made no product changes; implementation status is recorded under Specification below.
 
 ## Supported discovery API
 
@@ -29,7 +29,7 @@ Using the desktop Weft database's configured API key, read-only GET requests to 
 - `deepseek/deepseek-v4.1-flash-1017`: present publicly, absent for the configured key. The documented discovery mechanism detects this specific restriction.
 - The desktop's configured `z-ai/glm-5.3-flash`: present in both results. No inference success is claimed.
 
-Current Weft discovery in `src/model-settings.ts` uses the unauthenticated public `/models` endpoint and keeps the first 100 text-output records. It therefore does not currently apply the key-specific discovery filter. The repository development database had no saved key; the live check used the separate desktop database opened read-only. No database or application settings were changed.
+At the time of the live investigation, Weft discovery in `src/model-settings.ts` used the unauthenticated public `/models` endpoint and kept the first 100 text-output records. That baseline did not apply the key-specific discovery filter. The repository development database had no saved key; the live check used the separate desktop database opened read-only. No database or application settings were changed.
 
 Python's HTTPS client initially failed local certificate validation. The successful checks used the system curl client with normal certificate verification; certificate verification was not disabled. No generation requests or policy mutations were made.
 
@@ -41,6 +41,6 @@ This verifies the upstream response, not the running desktop's complete submissi
 
 ## Specification
 
-The agreed behavior and implementation acceptance criteria are published in [#203](https://github.com/tylerlong/weft/issues/203). It is the authoritative specification; this note preserves the investigation and upstream observations. Request-error handling and mocked failure/recovery validation are implemented under #205. Key-specific discovery remains pending under #204; the combined journey is checked under #206.
+The agreed behavior and implementation acceptance criteria are published in [#203](https://github.com/tylerlong/weft/issues/203). It is the authoritative specification; this note preserves the investigation and upstream observations. Ticket [#204](https://github.com/tylerlong/weft/issues/204) implements authenticated complete discovery, current-key availability, preserved configuration, disabled editing for unknown availability, and Retry. Request-error handling and mocked failure/recovery validation are implemented under #205. Isolated mocked API and browser tests cover this behavior; no live generation or user-database migration is part of that validation. The combined journey is checked under #206; real desktop recovery remains unverified.
 
-The specification separates preserved configured models from current-key availability, refreshes discovery on startup/Settings opening/key changes/Retry, restricts new choices and editing when discovery is unknown, and preserves ordinary request-time failure handling for existing selections. Key changes never clear or replace saved models, defaults, or Chat model/reasoning selections. Discovery/onboarding documentation updates remain part of #204. The user-guide troubleshooting section now describes request-time rejection and explicit recovery.
+The specification separates preserved configured models from current-key availability, refreshes discovery on startup/Settings opening/key changes/Retry, restricts new choices and editing when discovery is unknown, and preserves ordinary request-time failure handling for existing selections. Key changes never clear or replace saved models, defaults, or Chat model/reasoning selections. Onboarding and the user guide describe the delivered discovery and request-error behavior. The upstream observations above remain separate from application validation.

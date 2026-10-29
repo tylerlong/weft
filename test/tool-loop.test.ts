@@ -145,6 +145,7 @@ test("fresh database configures through HTTP and saves a complete tool loop", {
 	try {
 		assert.deepEqual(await request("/api/model-settings"), {
 			apiKeyConfigured: false,
+			discovery: { status: "no-key", models: [] },
 			providerRouting: "default",
 			defaultModelId: null,
 			models: [],

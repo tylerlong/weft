@@ -26,20 +26,19 @@ export function normalizeChatOptions(
 		: { ...options, reasoningEffort: null };
 }
 export function validChatOptions(options: ChatOptions, models: ManagedModel[]) {
-	return (
-		options.modelId !== null &&
-		normalizeChatOptions(options, models) === options
-	);
+	return models.some((model) => model.id === options.modelId);
 }
 export function ChatOptionPicker({
 	options,
 	models,
+	availableModels,
 	change,
 	disabled = false,
 	saving = false,
 }: {
 	options: ChatOptions;
 	models: ManagedModel[];
+	availableModels: ManagedModel[] | null;
 	change: (options: ChatOptions) => void;
 	disabled?: boolean;
 	saving?: boolean;
@@ -56,11 +55,14 @@ export function ChatOptionPicker({
 	const popup = useRef<HTMLDivElement>(null);
 	const id = useId();
 	const model = models.find((model) => model.id === options.modelId);
+	const available =
+		availableModels === null ||
+		availableModels.some((item) => item.id === options.modelId);
 	const efforts = reasoningEfforts(model);
 	const effortLabel = (value: string) =>
 		t(`reasoningEffort_${value}`, { defaultValue: value });
 	const summary = model
-		? `${model.name}${efforts.length ? ` · ${options.reasoningEffort ? effortLabel(options.reasoningEffort) : t("reasoningDefault")}` : ""}`
+		? `${model.name}${available ? "" : ` · ${t("modelUnavailable")}`}${efforts.length || options.reasoningEffort ? ` · ${options.reasoningEffort ? effortLabel(options.reasoningEffort) : t("reasoningDefault")}` : ""}`
 		: t("chooseModel");
 	function close(returnFocus: boolean) {
 		setOpen(false);
@@ -119,7 +121,7 @@ export function ChatOptionPicker({
 	}, [open]);
 	function group(
 		label: string,
-		values: { value: string | null; label: string }[],
+		values: { value: string | null; label: string; disabled?: boolean }[],
 		selected: string | null,
 		select: (value: string | null) => void,
 		layout: "plain" | "scroll" = "plain",
@@ -139,7 +141,7 @@ export function ChatOptionPicker({
 					>
 						<input
 							type="radio"
-							disabled={saving}
+							disabled={saving || item.disabled}
 							name={`${id}-${label}`}
 							checked={selected === item.value}
 							onChange={() => select(item.value)}
@@ -206,7 +208,21 @@ export function ChatOptionPicker({
 						</div>
 						{group(
 							t("model"),
-							models.map((item) => ({ value: item.id, label: item.name })),
+							models
+								.filter(
+									(item) =>
+										item.id === options.modelId ||
+										availableModels?.some(
+											(available) => available.id === item.id,
+										),
+								)
+								.map((item) => ({
+									value: item.id,
+									label: item.name,
+									disabled: !availableModels?.some(
+										(available) => available.id === item.id,
+									),
+								})),
 							options.modelId,
 							(modelId) =>
 								change(
@@ -228,10 +244,15 @@ export function ChatOptionPicker({
 								{group(
 									t("reasoningLevel"),
 									[
-										{ value: null, label: t("reasoningDefault") },
+										{
+											value: null,
+											label: t("reasoningDefault"),
+											disabled: !available,
+										},
 										...efforts.map((value) => ({
 											value,
 											label: effortLabel(value),
+											disabled: !available,
 										})),
 									],
 									options.reasoningEffort,

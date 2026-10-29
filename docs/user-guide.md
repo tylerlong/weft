@@ -4,7 +4,7 @@ Start with the [README](../README.md#get-started) to build and open the desktop 
 
 ## Your first task
 
-1. In **Settings → Models**, enter your OpenRouter API key and add a model.
+1. In **Settings → Models**, save your OpenRouter API key, wait for discovery, and add an available model.
 2. Create a **Project** and select folders on the machine running Weft.
 3. Create a **Chat**, choose a model and reasoning level, and describe the task.
 
@@ -15,6 +15,12 @@ The interface supports English and Chinese. It needs a window of at least 1280 �
 ## Models and provider routing
 
 Each Chat selects a model and reasoning level. Sub-agents can use different models. Inspect an Agent's model-call records to see actual requests, responses, request counts, and provider-reported usage, including Safety Review calls. Prompts, file contents, images, and tool results may be sent to the configured provider; local history does not mean offline model execution.
+
+Save your OpenRouter key before adding models. Weft discovers the complete text-output catalog allowed by that key’s current provider preferences, privacy settings, and guardrails. Discovery refreshes at backend startup, when Settings opens, after a different key is saved, and on **Retry**. Saving the same key does not trigger another refresh. The public catalog is not a fallback.
+
+Configured models are your saved models. Available models come from the latest successful discovery for the current key; availability does not guarantee a later request succeeds. Settings retains configured models absent from that result and marks them **Unavailable**. They cannot be selected as new defaults, Chat models, or explicit Sub-agent overrides; an existing selection remains visible and can still be submitted. Sub-agents without an override inherit their existing selection normally.
+
+Changing or removing the key never deletes configured models, defaults, history, or Chat model/reasoning selections. Without a key, or while discovery loads or fails, availability is unknown: model addition/removal, default selection, Chat model selection, and model options are disabled. Key editing and discovery **Retry** stay accessible. A saved key remains saved even when discovery fails. Existing selections can still be submitted while discovery fails; missing credentials still prevent submission. A successful empty catalog means no models are currently available, rather than a discovery error; explicit removal of configured models is still possible after success.
 
 **Settings → Models → Provider routing** saves one global preference:
 

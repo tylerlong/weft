@@ -86,6 +86,7 @@ test("Chat choices persist independently across restart and never restore histor
 			reasoningEffort: null,
 		});
 		addModel(f.db, "second");
+		await f.json("/api/model-catalog", "POST");
 		const other = await f.json(`/api/projects/${f.project.id}/chats`, "POST", {
 			name: "Other",
 		});
@@ -140,6 +141,7 @@ test("Chat PUT validates choices, preserves omitted fields, clears deleted refer
 	try {
 		const route = `/api/chats/${f.chat.id}`;
 		addModel(f.db, "second");
+		await f.json("/api/model-catalog", "POST");
 		for (const options of [
 			{ modelId: "missing" },
 			{ modelId: 4 },
@@ -236,6 +238,7 @@ test("prompt acceptance uses saved choices, busy edits affect the next call but 
 	});
 	try {
 		addModel(f.db, "second");
+		await f.json("/api/model-catalog", "POST");
 		const route = `/api/chats/${f.chat.id}`;
 		await f.json(route, "PUT", { reasoningEffort: "high" });
 		const accepted = await f.json(route, "POST", {

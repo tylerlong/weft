@@ -16,7 +16,7 @@
 
 服务方路由偏好见 [GLOSSARY.md](GLOSSARY.md#language)。
 
-已配置模型与可用模型的区别见 [GLOSSARY.md](GLOSSARY.md#language)。按当前 OpenRouter API key 发现可用模型的计划规格见 [#203](https://github.com/tylerlong/weft/issues/203)：更换 key 保留已配置模型、默认值和 Chat 选择；发现结果限制新选择，已有选择仍通过正常调用路径报告服务方拒绝。请求拒绝的脱敏原因、失败调用详情及显式恢复已在 #205 实施，并通过隔离的模拟 API／浏览器测试；按 key 发现与新选择限制待 #204 实施，组合验收见 #206。真实桌面恢复仍未验证；研究与上游验证见 [调查记录](docs/openrouter-model-availability-research.md)。
+已配置模型与可用模型的区别见 [GLOSSARY.md](GLOSSARY.md#language)。按当前 OpenRouter API key 发现可用模型的实施规格见 [#203](https://github.com/tylerlong/weft/issues/203)：更换 key 保留已配置模型、默认值和 Chat 选择；发现结果限制新选择，已有选择仍通过正常调用路径报告服务方拒绝。#204 已实现按 key 发现、保留配置与新选择限制；#205 已实现请求拒绝的脱敏原因、失败调用详情及显式恢复，并通过隔离的模拟 API／浏览器测试。组合验收见 #206，真实桌面恢复仍未验证；研究与上游验证见 [调查记录](docs/openrouter-model-availability-research.md)。
 
 | 术语                                          | 含义与区别                                                                                                                        |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |

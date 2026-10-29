@@ -30,7 +30,7 @@ test("custom database startup rejects a shared parent without changing permissio
 	}
 });
 
-test("database model metadata excludes credentials, durable anonymous lazy catalog refresh preserves membership and failures", async () => {
+test("database model metadata excludes credentials, authenticated catalog refresh preserves durable membership and reports failures", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "agent-settings-"));
 	const path = join(directory, "db.sqlite");
 	let calls = 0;
@@ -50,14 +50,17 @@ test("database model metadata excludes credentials, durable anonymous lazy catal
 			architecture: { output_modalities: ["image"] },
 		},
 	];
-	const anonymous: typeof fetch = async (url, init) => {
+	const discover: typeof fetch = async (url, init) => {
 		calls++;
 		assert.equal(
 			url,
-			"https://openrouter.ai/api/v1/models?sort=most-popular&limit=100&output_modalities=text",
+			"https://openrouter.ai/api/v1/models/user?output_modalities=text",
 		);
 		assert.equal(init?.method, "GET");
-		assert.equal(new Headers(init?.headers).has("authorization"), false);
+		assert.equal(
+			new Headers(init?.headers).get("authorization"),
+			"Bearer secret",
+		);
 		if (wait)
 			await new Promise<void>((resolve) => {
 				release = resolve;
@@ -70,7 +73,7 @@ test("database model metadata excludes credentials, durable anonymous lazy catal
 			throw Error("must not infer");
 		},
 		path,
-		anonymous,
+		discover,
 	).listen(0, "127.0.0.1");
 	const base = async () => {
 		if (!server.listening)
@@ -88,6 +91,7 @@ test("database model metadata excludes credentials, durable anonymous lazy catal
 		assert.equal(calls, 0);
 		assert.deepEqual(await (await request("/api/model-settings")).json(), {
 			apiKeyConfigured: false,
+			discovery: { status: "no-key", models: [] },
 			providerRouting: "default",
 			defaultModelId: null,
 			models: [],
@@ -105,7 +109,7 @@ test("database model metadata excludes credentials, durable anonymous lazy catal
 		).json();
 		assert.equal(saved.apiKeyConfigured, true);
 		assert.doesNotMatch(JSON.stringify(saved), /secret/);
-		assert.equal(calls, 0);
+		assert.equal(calls, 1);
 		const initial = await (await request("/api/model-catalog")).json();
 		assert.equal(calls, 1);
 		assert.equal(initial.models.length, 3);
@@ -137,10 +141,10 @@ test("database model metadata excludes credentials, durable anonymous lazy catal
 		const failure = await request("/api/model-catalog", "POST");
 		assert.equal(failure.status, 502);
 		assert.doesNotMatch(await failure.text(), /secret|provider/);
-		assert.deepEqual(
-			await (await request("/api/model-settings")).json(),
-			settings,
-		);
+		assert.deepEqual(await (await request("/api/model-settings")).json(), {
+			...settings,
+			discovery: { status: "error", models: [] },
+		});
 		const before = calls;
 		await request("/api/model-catalog");
 		assert.equal(calls, before);
@@ -148,12 +152,18 @@ test("database model metadata excludes credentials, durable anonymous lazy catal
 		wait = true;
 		const pending = request("/api/model-catalog", "POST");
 		while (!release) await new Promise((resolve) => setTimeout(resolve, 5));
-		await request("/api/models/one", "DELETE");
-		await request("/api/models", "POST", { id: "plain" }).then((response) =>
-			assert.equal(response.status, 200),
+		assert.equal((await request("/api/models/one", "DELETE")).status, 400);
+		assert.equal(
+			(await request("/api/models", "POST", { id: "plain" })).status,
+			400,
 		);
 		release();
 		await pending;
+		assert.equal((await request("/api/models/one", "DELETE")).status, 200);
+		assert.equal(
+			(await request("/api/models", "POST", { id: "plain" })).status,
+			200,
+		);
 		wait = false;
 		release = undefined;
 		settings = await (await request("/api/model-settings")).json();
@@ -163,8 +173,9 @@ test("database model metadata excludes credentials, durable anonymous lazy catal
 			["two", "plain"],
 		);
 		await new Promise<void>((resolve) => server.close(() => resolve()));
-		server = createServer(fetch, path, anonymous).listen(0, "127.0.0.1");
+		server = createServer(fetch, path, discover).listen(0, "127.0.0.1");
 		const restartCalls = calls;
+		await request("/api/model-catalog");
 		assert.deepEqual(await (await request("/api/model-settings")).json(), {
 			...settings,
 			models: settings.models,
@@ -193,7 +204,7 @@ test("database model metadata excludes credentials, durable anonymous lazy catal
 	}
 });
 
-test("concurrent catalog refreshes share one request while GET serves the successful cache and acceptance notifies once", async () => {
+test("concurrent catalog refreshes and GET share one request while editing is pending", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "agent-catalog-sharing-"));
 	let calls = 0;
 	let release: (() => void) | undefined;
@@ -227,8 +238,11 @@ test("concurrent catalog refreshes share one request while GET serves the succes
 		fetch(`${base}/api/model-catalog`, { method });
 	const abort = new AbortController();
 	try {
-		const old = await (await request()).json();
-		assert.equal(old.models[0].name, "Old");
+		await fetch(`${base}/api/model-settings`, {
+			method: "PUT",
+			body: JSON.stringify({ apiKey: "secret" }),
+		});
+		assert.equal((await (await request()).json()).models[0].name, "Old");
 		let refreshes = 0;
 		let endEvents: (() => void) | undefined;
 		const bothReceived = new Promise<void>((resolve) => {
@@ -247,9 +261,15 @@ test("concurrent catalog refreshes share one request while GET serves the succes
 		await refreshStarted;
 		const second = request("POST");
 		await bothReceived;
-		assert.deepEqual(await (await request()).json(), old);
+		const joined = request();
+		const pendingSettings = await (
+			await fetch(`${base}/api/model-settings`)
+		).json();
+		assert.equal(pendingSettings.discovery.status, "loading");
+		assert.deepEqual(pendingSettings.discovery.models, []);
 		assert.equal(calls, 2);
 		release?.();
+		assert.equal((await (await joined).json()).models[0].name, "New");
 		const refreshed = await Promise.all([first, second]);
 		for (const response of refreshed) {
 			assert.equal(response.status, 200);
@@ -258,7 +278,10 @@ test("concurrent catalog refreshes share one request while GET serves the succes
 		assert.equal(calls, 2);
 		// Finish the existing event response after acceptance so every notification is observed.
 		endEvents?.();
-		assert.equal(await events.text(), ": connected\n\ndata: changed\n\n");
+		assert.equal(
+			await events.text(),
+			": connected\n\ndata: changed\n\ndata: changed\n\n",
+		);
 	} finally {
 		release?.();
 		abort.abort();
@@ -268,16 +291,15 @@ test("concurrent catalog refreshes share one request while GET serves the succes
 	}
 });
 
-test("Settings credential read is scoped and uncached; empty writes remove it without provider calls or exposing events", async () => {
+test("Settings credential read is scoped and uncached; saves survive failed discovery without exposing events", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "agent-credential-read-"));
 	const path = join(directory, "db.sqlite");
 	const noProvider: typeof fetch = async () => {
-		assert.fail("Credential reads and writes must not call a provider");
+		assert.fail("Credential reads and writes must not generate");
 	};
-	const server = createServer(noProvider, path, noProvider).listen(
-		0,
-		"127.0.0.1",
-	);
+	const server = createServer(noProvider, path, async () => {
+		throw Error("discovery unavailable");
+	}).listen(0, "127.0.0.1");
 	await new Promise<void>((resolve) => server.once("listening", resolve));
 	const address = server.address();
 	assert(address && typeof address !== "string");
@@ -304,7 +326,7 @@ test("Settings credential read is scoped and uncached; empty writes remove it wi
 		assert.equal(saved.status, 200);
 		assert.doesNotMatch(await saved.text(), /synthetic-secret/);
 		const event = new TextDecoder().decode((await reader.read()).value);
-		assert.equal(event, "data: changed\n\n");
+		assert.match(event, /^(data: changed\n\n)+$/);
 		assert.deepEqual(await (await request("/api/settings/credential")).json(), {
 			apiKey: "synthetic-secret",
 		});
@@ -483,10 +505,18 @@ test("accepted call keeps captured key/model through replacement and removal, wi
 		await start;
 		const changed = await request("/api/model-settings", "PUT", {
 			apiKey: "new-secret",
-			defaultModelId: "new-model",
 		});
 		assert.equal(changed.status, 200);
 		assert.doesNotMatch(await changed.text(), /old-secret|new-secret/);
+		await request("/api/model-catalog");
+		assert.equal(
+			(
+				await request("/api/model-settings", "PUT", {
+					defaultModelId: "new-model",
+				})
+			).status,
+			200,
+		);
 		await request("/api/models/old-model", "DELETE");
 		await request("/api/model-settings", "PUT", { removeApiKey: true });
 		release?.();
@@ -532,7 +562,7 @@ test("accepted call keeps captured key/model through replacement and removal, wi
 	}
 });
 
-test("popular discovery is bounded, preserves out-of-ranking default/history and only updates complete responses", async () => {
+test("complete discovery preserves excluded defaults and only updates metadata from complete responses", async () => {
 	let data = Array.from({ length: 101 }, (_, index) =>
 		catalogModel(`rank-${index}`, `Rank ${index}`),
 	);
@@ -544,7 +574,10 @@ test("popular discovery is bounded, preserves out-of-ranking default/history and
 		join(directory, "db.sqlite"),
 		async (_url, init) => {
 			calls++;
-			assert.equal(new Headers(init?.headers).has("authorization"), false);
+			assert.equal(
+				new Headers(init?.headers).get("authorization"),
+				"Bearer secret",
+			);
 			return Response.json({ data: malformed ? [{ id: "rank-0" }] : data });
 		},
 	).listen(0, "127.0.0.1");
@@ -557,11 +590,12 @@ test("popular discovery is bounded, preserves out-of-ranking default/history and
 			...(body ? { body: JSON.stringify(body) } : {}),
 		});
 	try {
-		const initial = await (await request("/api/model-catalog", "POST")).json();
-		assert.equal(initial.models.length, 100);
+		await request("/api/model-settings", "PUT", { apiKey: "secret" });
+		const initial = await (await request("/api/model-catalog")).json();
+		assert.equal(initial.models.length, 101);
 		assert.equal(
 			(await request("/api/models", "POST", { id: "rank-100" })).status,
-			400,
+			200,
 		);
 		await request("/api/models", "POST", { id: "rank-1" });
 		await request("/api/models", "POST", { id: "rank-0" });
@@ -570,23 +604,20 @@ test("popular discovery is bounded, preserves out-of-ranking default/history and
 			(await (await request("/api/model-settings")).json()).models.map(
 				(row: { id: string }) => row.id,
 			),
-			["rank-1", "rank-0"],
+			["rank-100", "rank-1", "rank-0"],
 		);
 		data = [catalogModel("rank-0", "Renamed")];
 		await request("/api/model-catalog", "POST");
 		const saved = await (await request("/api/model-settings")).json();
 		assert.equal(saved.defaultModelId, "rank-1");
-		assert.equal(saved.models[0].name, "Rank 1");
+		assert.equal(saved.models[1].name, "Rank 1");
 		malformed = true;
 		assert.equal((await request("/api/model-catalog", "POST")).status, 502);
-		assert.deepEqual(
-			await (await request("/api/model-settings")).json(),
-			saved,
-		);
-		assert.equal(
-			(await (await request("/api/model-catalog")).json()).models[0].name,
-			"Renamed",
-		);
+		assert.deepEqual(await (await request("/api/model-settings")).json(), {
+			...saved,
+			discovery: { status: "error", models: [] },
+		});
+		assert.equal((await request("/api/model-catalog")).status, 502);
 		assert.equal(calls, 3);
 	} finally {
 		server.closeAllConnections();
@@ -595,7 +626,7 @@ test("popular discovery is bounded, preserves out-of-ranking default/history and
 	}
 });
 
-test("default removal is atomic, uses successful cached rank, and falls back to stable order after restart", async () => {
+test("default removal is atomic, requires successful discovery, and uses available rank or stable membership", async () => {
 	const folder = await mkdtemp(join(tmpdir(), "agent-replacement-"));
 	const path = join(folder, "db.sqlite");
 	let fail = false;
@@ -620,7 +651,8 @@ test("default removal is atomic, uses successful cached rank, and falls back to 
 	const setDefault = async (id: string) =>
 		request("/api/model-settings", "PUT", { defaultModelId: id });
 	try {
-		await request("/api/model-catalog", "POST");
+		await request("/api/model-settings", "PUT", { apiKey: "secret" });
+		await request("/api/model-catalog");
 		for (const id of ["a", "b", "c", "d", "e"])
 			await request("/api/models", "POST", { id });
 		await setDefault("a");
@@ -628,6 +660,9 @@ test("default removal is atomic, uses successful cached rank, and falls back to 
 		await request("/api/model-catalog", "POST");
 		fail = true;
 		assert.equal((await request("/api/model-catalog", "POST")).status, 502);
+		assert.equal((await request("/api/models/a", "DELETE")).status, 400);
+		fail = false;
+		await request("/api/model-catalog", "POST");
 		const db = new DatabaseSync(path);
 		db.exec(
 			"CREATE TRIGGER reject_replacement BEFORE UPDATE OF default_model_id ON settings WHEN NEW.default_model_id='c' BEGIN SELECT RAISE(ABORT,'disk failure'); END",
@@ -644,7 +679,9 @@ test("default removal is atomic, uses successful cached rank, and falls back to 
 			["b", "c", "d", "e"],
 		);
 		await new Promise<void>((resolve) => server.close(() => resolve()));
+		data = [];
 		server = start();
+		await request("/api/model-catalog");
 		await request("/api/models/c", "DELETE");
 		assert.equal((await settings()).defaultModelId, "b");
 		fail = false;
@@ -693,7 +730,8 @@ test("first model addition persists its default atomically and duplicates or lat
 		assert.equal((await add("one")).status, 400);
 		assert.equal(catalogCalls, 0);
 		assert.deepEqual((await settings()).models, []);
-		await request("/api/model-catalog", "POST");
+		await request("/api/model-settings", "PUT", { apiKey: "secret" });
+		await request("/api/model-catalog");
 		const first = await (await add("one")).json();
 		assert.equal(first.defaultModelId, "one");
 		assert.equal(first.firstModelAdded, true);
@@ -730,19 +768,21 @@ test("first model addition persists its default atomically and duplicates or lat
 		const retainedDuplicate = await add("two");
 		assert.equal(retainedDuplicate.status, 200);
 		assert.equal((await retainedDuplicate.json()).firstModelAdded, false);
-		assert.deepEqual(await settings(), saved);
+		const excluded = await settings();
+		assert.deepEqual(excluded.models, saved.models);
+		assert.equal(excluded.defaultModelId, saved.defaultModelId);
 		await new Promise<void>((resolve) => server.close(() => resolve()));
 		failCatalog = true;
 		server = start();
 		const restartedDuplicate = await add("two");
 		assert.equal(restartedDuplicate.status, 200);
 		assert.equal((await restartedDuplicate.json()).firstModelAdded, false);
-		assert.deepEqual(await settings(), saved);
+		assert.deepEqual((await settings()).models, saved.models);
 		const beforeRetry = catalogCalls;
 		// A browser may retain candidates after restart, but saving must not fetch discovery.
 		assert.equal((await add("three")).status, 400);
 		assert.equal(catalogCalls, beforeRetry);
-		assert.deepEqual(await settings(), saved);
+		assert.deepEqual((await settings()).models, saved.models);
 		failCatalog = false;
 		assert.equal((await request("/api/model-catalog", "POST")).status, 200);
 		assert.equal(catalogCalls, beforeRetry + 1);
