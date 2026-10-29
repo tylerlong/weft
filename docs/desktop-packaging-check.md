@@ -305,3 +305,64 @@ exercised). Packaged Quit measured native command and temporary Chrome cleanup;
 external MCP services and Edge active during Quit were not separately exercised.
 Existing MCP regressions passed, and #200 separately exercised real Edge page
 interaction and owned cleanup. Final parent-level acceptance remains #202.
+
+## Integrated local desktop acceptance (#202, 2026-10-28)
+
+The complete #198 contract was audited against the combined implementation.
+No additional production change was needed in #202. Production remains at
+`5ab7f19`; `84d4493` and `30e66e5` add acceptance coverage and fixture cleanup.
+The final serialized `pnpm test:desktop` passed **16/16** on `30e66e5` in
+187.7 seconds, including all eleven startup/exit failure cases and native/Chrome
+Quit cleanup. This combined run supersedes the earlier twelve- and
+fifteen-check snapshots for integrated acceptance.
+
+The build fixture additionally exercises a successful `pnpm desktop:start`,
+not only refusal/error paths: it builds from the disposable checkout,
+LaunchServices opens that output (parent PID 1), the frontend loads, and idle
+Quit closes the listener and exits the captured Electron PID. A deliberately
+same-named unrelated process and the existing localhost fixture listener remain
+alive. Explicit `.env`, database and private-document sentinels stay outside the
+bundle; its resource root contains only `desktop`, `dist`, `docs`,
+`node_modules`, `package.json`, `runtime` and `src`, with only the selected
+browser guide under `docs`. The build validates internal dependency links.
+`git check-ignore` confirms application output and runtime cache are ignored;
+`otool -L` shows the bundled Node links only macOS system libraries.
+
+The combined suite also verifies relocated execution with the disposable
+checkout unavailable, minimal GUI PATH, bundled Node/ripgrep, installed Git and
+project-pinned pnpm, actual Chrome/Edge form interaction, missing-browser then
+non-browser continuity, visible/closed-window rebuild refusal during live work,
+failed-build preservation, source snapshots, private persistent data,
+incompatible-schema preservation, authorization, single-instance/window
+continuity, active/queued Cancel and Confirm, interruption history, owned
+process/listener cleanup and no delayed effect or replay. Running-app detection
+uses native live-application inventory, not a persisted marker; ordinary
+database ownership tests cover stale ownership files separately.
+
+Local `pnpm test` passed **331 tests**, with **six opt-in extension skips** and
+no failures in 77.9 seconds. `pnpm test:e2e` passed **230/230** in 2.6 minutes.
+These ran on the same production code before the desktop fixture-only cleanup
+follow-up. Formatting and typechecking passed. Versions were macOS 26.7.1
+arm64, build Node 24.21.0, pnpm 11.28.8, Electron 45.0.0, bundled Node 24.21.0,
+Playwright 1.64.1, Chrome 156.0.8078.73 and Edge 156.0.4314.50; the database
+source remains schema 28. Exact final remote CI and pushed revision are
+recorded in #202's result comment.
+
+Independent Standards and Spec reviews covered the full integrated diff from
+`db2e2c8`. Two accepted fixture-lifetime findings were corrected: normal Quit
+and observed PID exit before disposal, and preserving scratch on any failed app
+cleanup while still closing the fixture HTTP server. Both reviewers cleared
+`30e66e5`. Intermediate fixture runs exposed an early scratch-removal race and
+errors in an added cleanup lookup; these were test-harness failures, not
+production defects. The final fixture uses the established running-app guard
+and the captured launch PID. Failed scratch was removed only after observed
+normal app exit. The final running-app inventory was empty.
+
+The #193 cancellation race remains unresolved; this integration run did not
+reproduce it and does not supersede earlier recorded failures. Native CUA
+reported the Mac locked, so an actual Dock-icon click was unavailable; the
+activation handler and duplicate-launch reopening were tested instead. #201's
+real native Cancel/Quit dialog evidence remains separate. No clean-machine,
+live external MCP/Docker, Edge-active-during-Quit or personal-login/extension
+acceptance was added. Signing, notarization, Intel/Windows support and public
+distribution remain outside this delivery.
