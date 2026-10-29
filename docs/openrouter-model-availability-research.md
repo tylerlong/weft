@@ -24,7 +24,6 @@ Guardrails can restrict models and providers and require zero data retention. Ac
 On 2026-10-29, Edge showed the RingCentral account on the supplied model page, with every listed provider marked “Not routable.” [Observed model page](https://openrouter.ai/deepseek/deepseek-v4.1-flash-1017)
 
 Using the desktop Weft database's configured API key, read-only GET requests to the public `/models` and authenticated `/models/user` endpoints both returned HTTP 200. The key stayed in process memory and curl's stdin; it was not printed, written into this note, or passed in command-line arguments. Both requests used the default host and omitted pagination and modality parameters.
-
 - Public catalog: 456 distinct model IDs; key-filtered catalog: 244.
 - 213 public IDs were absent from the key-filtered result; one ID was present only in the filtered result. These are independent catalog snapshots, not a strict partition or a count of explicit company blocks.
 - `deepseek/deepseek-v4.1-flash-1017`: present publicly, absent for the configured key. The documented discovery mechanism detects this specific restriction.
