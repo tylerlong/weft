@@ -251,3 +251,11 @@ These checks do not resolve the separate #193 cancellation race, guarantee
 reclamation of deliberately detached processes, or replace final integrated
 acceptance in #202. No clean-machine, signing/notarization, real-data import,
 personal-browser login or public-distribution checks were performed.
+
+For #201, an initial full unit/native run passed 329 tests, skipped six opt-in
+checks and reproduced two existing delayed-effect failures in
+`command-tools.test.ts`: “root cancellation waits for real root and child command
+cleanup” and “service restart retains interrupted command chunks and never
+replays native work”. Both exact cases then passed together in isolation. No
+command/cancellation implementation or existing assertion was changed. These
+intermittent #193 failures remain recorded; a successful rerun is not a fix.

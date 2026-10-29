@@ -80,6 +80,20 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 		);
 	};
 	let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
+	const closeApplication = async () => {
+		if (!application) return;
+		// Failure cleanup must also confirm Quit if a fixture Agent is still active.
+		await application
+			.evaluate(({ dialog }) => {
+				dialog.showMessageBox = async () => ({
+					response: 1,
+					checkboxChecked: false,
+				});
+			})
+			.catch(() => {});
+		await application.close();
+		application = undefined;
+	};
 	let modelCalls = 0;
 	let command =
 		'node --version && rg --version && git --version && pnpm --version && node -e \'console.log(process.execPath); console.log(process.env.WEFT_MANAGEMENT_TOKEN === undefined ? "authority-absent" : "authority-leaked")\'';
@@ -352,8 +366,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 				(await first.api(`/api/agents/${heldAgent.agentId}`)).agents[0].status,
 				"succeeded",
 			);
-			await application.close();
-			application = undefined;
+			await closeApplication();
 			await assert.rejects(fetch(first.origin + "/api/projects"));
 			const savedTarget = {
 				channel: "msedge",
@@ -428,8 +441,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			assert.equal(nonBrowser.exitCode, 0, nonBrowser.output);
 			assert.match(nonBrowser.output, /non-browser-still-works/);
 			await assert.rejects(stat(savedTarget.userDataDir), { code: "ENOENT" });
-			await application.close();
-			application = undefined;
+			await closeApplication();
 			await rename(hidden, checkout);
 			command =
 				"node --version && rg --version && git --version && pnpm --version";
@@ -497,8 +509,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			);
 		} finally {
 			if (application) {
-				await application.close();
-				application = undefined;
+				await closeApplication();
 			}
 			if (await stat(hidden).catch(() => undefined))
 				await rename(hidden, checkout);
@@ -574,7 +585,7 @@ test("build, relocate, use, safely refuse rebuild, and reopen a standalone app",
 			() => backendFailures(checkout, dbPath),
 		);
 	} finally {
-		if (application) await application.close();
+		await closeApplication();
 		if (finderRunning) await quitFinder();
 		model.closeAllConnections();
 		await new Promise<void>((resolve) => model.close(() => resolve()));
