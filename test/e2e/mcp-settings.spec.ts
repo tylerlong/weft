@@ -13,6 +13,7 @@ for (const chinese of [false, true]) {
 				data: { language: "zh-CN" },
 			});
 		const row = jiraMcpService();
+		row.enabled = false;
 		row.env[1].value = "private-test-token";
 		expect(
 			(
@@ -54,6 +55,15 @@ for (const chinese of [false, true]) {
 				});
 			await route.continue();
 		});
+		const show = panel.getByRole("button", {
+			name: chinese ? "显示 Jira 的值" : "Show values for Jira",
+			exact: true,
+		});
+		const hide = panel.getByRole("button", {
+			name: chinese ? "隐藏 Jira 的值" : "Hide values for Jira",
+			exact: true,
+		});
+		await show.click();
 		await json.fill("{");
 		await json.blur();
 		await expect(panel.getByRole("alert")).toContainText(
@@ -64,7 +74,18 @@ for (const chinese of [false, true]) {
 			.click();
 		await expect(dialog).toBeVisible();
 		await expect(json).toHaveValue("{");
+		await expect(values.nth(1)).toHaveAttribute("type", "text");
+		await hide.click();
+		await expect(json).toHaveValue("{");
+		await show.click();
+		await dialog
+			.getByRole("tab", { name: chinese ? "常规" : "General", exact: true })
+			.click();
+		await dialog.getByRole("tab", { name: "MCP", exact: true }).click();
+		await expect(values.nth(1)).toHaveAttribute("type", "password");
+		await expect(json).toHaveValue("{");
 		expect(writes).toBe(0);
+		await show.click();
 		fail = true;
 		const config = JSON.stringify({
 			url: "https://example.invalid/mcp",
@@ -86,6 +107,9 @@ for (const chinese of [false, true]) {
 			dialog.getByRole("tab", { name: "MCP", exact: true }),
 		).toHaveAttribute("aria-selected", "true");
 		await expect(json).toHaveValue(config);
+		await expect(values.nth(1)).toHaveAttribute("type", "password");
+		await show.click();
+		await expect(json).toHaveValue(config);
 		fail = false;
 		await dialog
 			.getByRole("button", { name: chinese ? "关闭" : "Close", exact: true })
@@ -101,6 +125,13 @@ for (const chinese of [false, true]) {
 			.click();
 		await dialog.getByRole("tab", { name: "MCP", exact: true }).click();
 		await expect(values.nth(1)).toHaveValue("private-test-token");
+		await expect(values.nth(1)).toHaveAttribute("type", "password");
+		await expect(
+			panel.getByRole("checkbox", {
+				name: chinese ? "启用" : "Enabled",
+				exact: true,
+			}),
+		).not.toBeChecked();
 		await values.nth(1).fill("");
 		await values.nth(1).blur();
 		await expect
@@ -131,6 +162,17 @@ for (const chinese of [false, true]) {
 			})
 			.click();
 		await expect(json).toHaveValue(/startup_timeout_sec/);
+		await expect(
+			panel.getByRole("checkbox", {
+				name: chinese ? "启用" : "Enabled",
+				exact: true,
+			}),
+		).toBeChecked();
+		await expect(values.nth(1)).toHaveAttribute("type", "text");
+		await expect(values.nth(0)).toHaveValue("");
+		await expect(values.nth(1)).toHaveValue("");
+		await expect(values.nth(2)).toHaveValue("jira");
+		await expect(values.nth(3)).toHaveValue("false");
 		await expect
 			.poll(
 				async () =>
@@ -138,6 +180,280 @@ for (const chinese of [false, true]) {
 						.services.length,
 			)
 			.toBe(1);
+		// Replacement services follow creation defaults, not the removed row's visibility.
+		await panel
+			.getByRole("button", {
+				name: chinese ? "移除服务" : "Remove service",
+				exact: true,
+			})
+			.click();
+		await expect(json).toHaveCount(0);
+		await panel
+			.getByRole("button", {
+				name: chinese ? "添加服务" : "Add service",
+				exact: true,
+			})
+			.click();
+		const enabled = panel.getByRole("checkbox", {
+			name: chinese ? "启用" : "Enabled",
+			exact: true,
+		});
+		await expect(enabled).toBeChecked();
+		await panel
+			.getByRole("button", {
+				name: chinese ? "添加环境变量" : "Add environment variable",
+				exact: true,
+			})
+			.click();
+		await expect(values).toHaveAttribute("type", "text");
+		await panel
+			.getByLabel(chinese ? "环境变量名称" : "Environment variable name", {
+				exact: true,
+			})
+			.fill("TOKEN");
+		await values.fill("custom-draft-token");
+		await values.blur();
+		await expect(panel.getByRole("alert")).toContainText(
+			chinese ? "请输入服务名称" : "Enter a service name",
+		);
+		await panel
+			.getByRole("textbox", {
+				name: chinese ? "服务名称" : "Service name",
+				exact: true,
+			})
+			.fill("Custom");
+		const customShow = panel.getByRole("button", {
+			name: chinese ? "显示 Custom 的值" : "Show values for Custom",
+			exact: true,
+		});
+		await panel
+			.getByRole("button", {
+				name: chinese ? "隐藏 Custom 的值" : "Hide values for Custom",
+				exact: true,
+			})
+			.click();
+		await expect(values).toHaveAttribute("type", "password");
+		await customShow.click();
+		await dialog
+			.getByRole("tab", { name: chinese ? "常规" : "General", exact: true })
+			.click();
+		await dialog.getByRole("tab", { name: "MCP", exact: true }).click();
+		await expect(values).toHaveAttribute("type", "password");
+		await expect(values).toHaveValue("custom-draft-token");
+		await expect(json).toHaveValue("");
+		await expect
+			.poll(
+				async () =>
+					(await (await page.request.get(`${app.url}/api/mcp-settings`)).json())
+						.services,
+			)
+			.toEqual([]);
+		await customShow.click();
+		await json.fill('{"command":"example","args":[]}');
+		await json.blur();
+		await expect(panel.getByRole("status")).toHaveText(
+			chinese ? "已保存" : "Saved",
+		);
+		await expect(values).toHaveAttribute("type", "text");
+		const custom = await (
+			await page.request.get(`${app.url}/api/mcp-settings`)
+		).json();
+		expect(custom.services[0].enabled).toBe(true);
+		expect(custom.services[0].env).toEqual([
+			{ name: "TOKEN", value: "custom-draft-token" },
+		]);
+		await enabled.uncheck();
+		await dialog
+			.getByRole("button", { name: chinese ? "关闭" : "Close", exact: true })
+			.click();
+		await expect(dialog).not.toBeVisible();
+		await page
+			.getByRole("button", { name: chinese ? "设置" : "Settings", exact: true })
+			.click();
+		await dialog.getByRole("tab", { name: "MCP", exact: true }).click();
+		await expect(values).toHaveAttribute("type", "password");
+		await expect(values).toHaveValue("custom-draft-token");
+		await expect(enabled).not.toBeChecked();
+	});
+	test(`MCP visibility is independent, temporary, keyboard accessible and preserves enabled states (${chinese ? "zh" : "en"})`, async ({
+		page,
+		app,
+	}) => {
+		if (chinese)
+			await page.request.put(`${app.url}/api/language`, {
+				data: { language: "zh-CN" },
+			});
+		const services = [jiraMcpService(), jiraMcpService()];
+		services[0].name = "Alpha";
+		services[0].enabled = false;
+		services[0].env[1].value = "alpha-synthetic-token";
+		services[1].name = "Beta";
+		services[1].env[1].value = "beta-synthetic-token";
+		await page.request.put(`${app.url}/api/mcp-settings`, {
+			data: { services },
+		});
+		await page.goto(app.url);
+		const settings = page.getByRole("button", {
+			name: chinese ? "设置" : "Settings",
+			exact: true,
+		});
+		await settings.click();
+		const dialog = page.getByRole("dialog", {
+			name: chinese ? "设置" : "Settings",
+			exact: true,
+		});
+		const mcp = dialog.getByRole("tab", { name: "MCP", exact: true });
+		await mcp.click();
+		const panel = dialog.getByRole("tabpanel", { name: "MCP", exact: true });
+		const rows = panel.getByRole("group", {
+			name: chinese ? /^服务 \d+$/ : /^Service \d+$/,
+		});
+		const valueName = chinese ? "环境变量值" : "Environment variable value";
+		const alpha = rows.nth(0).getByLabel(valueName, { exact: true }).nth(1);
+		const beta = rows.nth(1).getByLabel(valueName, { exact: true }).nth(1);
+		const enabled = panel.getByRole("checkbox", {
+			name: chinese ? "启用" : "Enabled",
+			exact: true,
+		});
+		await expect(alpha).toHaveAttribute("type", "password");
+		await expect(beta).toHaveAttribute("type", "password");
+		await expect(enabled.nth(0)).not.toBeChecked();
+		await expect(enabled.nth(1)).toBeChecked();
+		let writes = 0;
+		await page.route("**/api/mcp-settings", async (route) => {
+			if (route.request().method() === "PUT") writes++;
+			await route.continue();
+		});
+		const showAlpha = rows.nth(0).getByRole("button", {
+			name: chinese ? "显示 Alpha 的值" : "Show values for Alpha",
+			exact: true,
+		});
+		const hideAlpha = rows.nth(0).getByRole("button", {
+			name: chinese ? "隐藏 Alpha 的值" : "Hide values for Alpha",
+			exact: true,
+		});
+		await showAlpha.focus();
+		await page.keyboard.press("Tab");
+		await page.keyboard.press("Shift+Tab");
+		await expect(showAlpha).toBeFocused();
+		await expect(showAlpha).toHaveCSS("outline-style", "solid");
+		await expect(showAlpha).toHaveAttribute("aria-pressed", "false");
+		await page.keyboard.press("Enter");
+		await expect(hideAlpha).toHaveAttribute("aria-pressed", "true");
+		await expect(alpha).toHaveAttribute("type", "text");
+		await expect(alpha).toHaveValue("alpha-synthetic-token");
+		await expect(beta).toHaveAttribute("type", "password");
+		await hideAlpha.press("Space");
+		await expect(alpha).toHaveAttribute("type", "password");
+		await expect(alpha).toHaveValue("alpha-synthetic-token");
+		await showAlpha.click();
+		expect(writes).toBe(0);
+		// Clicking Hide blurs the actual edit and retains ordinary autosave.
+		await alpha.fill("visible-edit");
+		await hideAlpha.click();
+		await expect(panel.getByRole("status")).toHaveText(
+			chinese ? "已保存" : "Saved",
+		);
+		await expect(alpha).toHaveValue("visible-edit");
+		await alpha.fill("masked-edit");
+		await showAlpha.click();
+		await expect(panel.getByRole("status")).toHaveText(
+			chinese ? "已保存" : "Saved",
+		);
+		await expect(alpha).toHaveAttribute("type", "text");
+		await expect(alpha).toHaveValue("masked-edit");
+		await rows
+			.nth(0)
+			.getByRole("button", {
+				name: chinese ? "添加环境变量" : "Add environment variable",
+				exact: true,
+			})
+			.click();
+		const extra = rows.nth(0).getByLabel(valueName, { exact: true }).nth(4);
+		await expect(extra).toHaveAttribute("type", "text");
+		await rows
+			.nth(0)
+			.getByLabel(chinese ? "环境变量名称" : "Environment variable name", {
+				exact: true,
+			})
+			.nth(4)
+			.fill("EXTRA");
+		await extra.fill("extra-value");
+		await extra.blur();
+		await expect(panel.getByRole("status")).toHaveText(
+			chinese ? "已保存" : "Saved",
+		);
+		await expect(alpha).toHaveAttribute("type", "text");
+		await hideAlpha.click();
+		await rows
+			.nth(0)
+			.getByRole("button", {
+				name: chinese ? "添加环境变量" : "Add environment variable",
+				exact: true,
+			})
+			.click();
+		await expect(
+			rows.nth(0).getByLabel(valueName, { exact: true }).nth(5),
+		).toHaveAttribute("type", "password");
+		await rows
+			.nth(0)
+			.getByRole("button", {
+				name: chinese ? "移除环境变量 " : "Remove environment variable ",
+				exact: true,
+			})
+			.click();
+		await enabled.nth(1).uncheck();
+		await rows
+			.nth(1)
+			.getByRole("button", {
+				name: chinese ? "显示 Beta 的值" : "Show values for Beta",
+				exact: true,
+			})
+			.click();
+		await dialog
+			.getByRole("tab", { name: chinese ? "常规" : "General", exact: true })
+			.click();
+		await mcp.click();
+		await expect(beta).toHaveAttribute("type", "password");
+		await rows
+			.nth(1)
+			.getByRole("button", {
+				name: chinese ? "显示 Beta 的值" : "Show values for Beta",
+				exact: true,
+			})
+			.click();
+		await dialog
+			.getByRole("button", { name: chinese ? "关闭" : "Close", exact: true })
+			.click();
+		await expect(dialog).not.toBeVisible();
+		await settings.click();
+		await mcp.click();
+		await expect(alpha).toHaveAttribute("type", "password");
+		await expect(beta).toHaveAttribute("type", "password");
+		await expect(enabled.nth(0)).not.toBeChecked();
+		await expect(enabled.nth(1)).not.toBeChecked();
+		await expect(alpha).toHaveValue("masked-edit");
+		await expect(beta).toHaveValue("beta-synthetic-token");
+		await page.setViewportSize({ width: 720, height: 900 });
+		await expect(panel).toBeVisible();
+		expect(
+			await dialog.evaluate(
+				(element) => element.scrollWidth <= element.clientWidth,
+			),
+		).toBe(true);
+		const saved = await (
+			await page.request.get(`${app.url}/api/mcp-settings`)
+		).json();
+		expect(saved.services[0]).toEqual({
+			...services[0],
+			env: [
+				...services[0].env.map((env, index) =>
+					index === 1 ? { ...env, value: "masked-edit" } : env,
+				),
+				{ name: "EXTRA", value: "extra-value" },
+			],
+		});
+		expect(saved.services[1]).toEqual({ ...services[1], enabled: false });
 	});
 }
 
@@ -317,6 +633,10 @@ test("Settings URL and masked token save through to an actual HTTP model tool ca
 		const value = panel.getByLabel("Environment variable value", {
 			exact: true,
 		});
+		await expect(value).toHaveAttribute("type", "text");
+		await panel
+			.getByRole("button", { name: "Hide values for HTTP MCP", exact: true })
+			.click();
 		await expect(value).toHaveAttribute("type", "password");
 		await value.fill("controlled-<ONCE>");
 		await value.blur();
@@ -324,6 +644,7 @@ test("Settings URL and masked token save through to an actual HTTP model tool ca
 		await panel.getByRole("checkbox", { name: "Enabled", exact: true }).check();
 		await dialog.getByRole("button", { name: "Close", exact: true }).click();
 		await expect(dialog).not.toBeVisible();
+		expect(peer.requests).toEqual([]);
 		const model = app.rawStreamModel();
 		model.push(
 			completedBody({

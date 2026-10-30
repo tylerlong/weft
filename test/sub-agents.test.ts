@@ -1990,6 +1990,7 @@ for (const maskKeys of [false, true]) {
 		});
 		try {
 			const service = jiraMcpService();
+			service.enabled = false;
 			service.env.push({ name: "ESCAPED_SECRET", value: secret });
 			if (maskKeys)
 				service.env.push(
@@ -2136,6 +2137,7 @@ test("ordinary MCP env values preserve accepted answers, child notifications and
 	});
 	try {
 		const service = jiraMcpService();
+		service.enabled = false;
 		service.env.push(
 			...[
 				"text",
@@ -2218,6 +2220,7 @@ for (const invalidRootStatus of [false, true]) {
 		);
 		try {
 			const service = jiraMcpService();
+			service.enabled = false;
 			service.env.push(
 				{ name: "STATUS_SECRET", value: "completed" },
 				{ name: "PART_SECRET", value: "output_text" },
@@ -2291,6 +2294,7 @@ test("Root submission masks configured env values without changing active execut
 	});
 	try {
 		const service = jiraMcpService();
+		service.enabled = false;
 		service.env.push(
 			{ name: "ESCAPED", value: secret },
 			{ name: "PIXEL", value: "iVBOR" },

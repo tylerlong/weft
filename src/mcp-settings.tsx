@@ -17,17 +17,23 @@ import { SettingsHelp } from "./settings-help.tsx";
 const input =
 	"mt-2 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600";
 const button =
-	"rounded-md border border-neutral-300 px-3 py-2 hover:bg-neutral-100 disabled:opacity-50";
+	"rounded-md border border-neutral-300 px-3 py-2 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50";
 
 export function McpSettings({
 	open,
+	active,
 	commitRef,
 }: {
 	open: boolean;
+	active: boolean;
 	commitRef: RefObject<(() => Promise<boolean>) | null>;
 }) {
 	const { t } = useTranslation();
 	const [services, setServices] = useState<McpService[]>([]);
+	const [visible, setVisible] = useState<Set<string>>(new Set());
+	useEffect(() => {
+		if (!open || !active) setVisible(new Set());
+	}, [open, active]);
 	const draft = useRef(services);
 	const saved = useRef<string | null>(null);
 	const loading = useRef<Promise<boolean> | null>(null);
@@ -127,6 +133,10 @@ export function McpSettings({
 		setServices(rows);
 		setStatus("");
 	}
+	function add(row: McpService) {
+		update([...draft.current, row]);
+		setVisible((current) => new Set([...current, row.id]));
+	}
 	function change(id: string, values: Partial<McpService>) {
 		update(
 			draft.current.map((row) => (row.id === id ? { ...row, ...values } : row)),
@@ -185,6 +195,28 @@ export function McpSettings({
 							onBlur={() => void commit()}
 						/>
 					</div>
+					<button
+						disabled={!ready}
+						type="button"
+						className={button}
+						aria-label={t(
+							visible.has(row.id)
+								? "mcpHideServiceValues"
+								: "mcpShowServiceValues",
+							{ name: row.name || t("mcpService", { number: index + 1 }) },
+						)}
+						aria-pressed={visible.has(row.id)}
+						onClick={() =>
+							setVisible((current) => {
+								const next = new Set(current);
+								if (next.has(row.id)) next.delete(row.id);
+								else next.add(row.id);
+								return next;
+							})
+						}
+					>
+						{t(visible.has(row.id) ? "mcpHideValues" : "mcpShowValues")}
+					</button>
 					{row.env.map((variable, envIndex) => (
 						<div
 							// biome-ignore lint/suspicious/noArrayIndexKey: env names are editable; inputs have no local state
@@ -214,7 +246,7 @@ export function McpSettings({
 								<input
 									disabled={!ready}
 									className={input}
-									type="password"
+									type={visible.has(row.id) ? "text" : "password"}
 									autoComplete="new-password"
 									value={variable.value}
 									onChange={(event) =>
@@ -262,6 +294,11 @@ export function McpSettings({
 							className={button}
 							onClick={() => {
 								update(draft.current.filter((item) => item.id !== row.id));
+								setVisible((current) => {
+									const next = new Set(current);
+									next.delete(row.id);
+									return next;
+								});
 								setInvalid((current) => ({ ...current, [row.id]: "" }));
 								void commit();
 							}}
@@ -282,7 +319,7 @@ export function McpSettings({
 					type="button"
 					className={button}
 					onClick={() => {
-						update([...draft.current, jiraMcpService()]);
+						add(jiraMcpService());
 						void commit();
 					}}
 				>
@@ -294,16 +331,13 @@ export function McpSettings({
 					type="button"
 					className={button}
 					onClick={() =>
-						update([
-							...draft.current,
-							{
-								id: crypto.randomUUID(),
-								name: "",
-								enabled: false,
-								config: "",
-								env: [],
-							},
-						])
+						add({
+							id: crypto.randomUUID(),
+							name: "",
+							enabled: true,
+							config: "",
+							env: [],
+						})
 					}
 				>
 					{t("mcpAddService")}

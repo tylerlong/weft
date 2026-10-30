@@ -83,6 +83,7 @@ for (const name of ["exec_command", "apply_patch", "browser_connect"]) {
 		app,
 	}) => {
 		const service = jiraMcpService();
+		service.enabled = false;
 		service.env.push(
 			{ name: "COMMAND_SECRET", value: "command" },
 			{ name: "PATCH_SECRET", value: "patch" },

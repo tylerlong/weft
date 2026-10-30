@@ -136,7 +136,7 @@ export function validateMcpServices(value: unknown): McpService[] {
 export const jiraMcpService = (): McpService => ({
 	id: crypto.randomUUID(),
 	name: "Jira",
-	enabled: false,
+	enabled: true,
 	config: JSON.stringify(
 		{
 			command: "docker",

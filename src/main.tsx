@@ -2268,7 +2268,11 @@ function App() {
 					className="settings-content min-h-0 flex-1 overflow-y-auto px-6 py-4"
 				>
 					<fieldset disabled={settingsClosing} className="min-w-0">
-						<McpSettings open={settingsOpen} commitRef={mcpCommit} />
+						<McpSettings
+							open={settingsOpen}
+							active={settingsTab === "mcp"}
+							commitRef={mcpCommit}
+						/>
 					</fieldset>
 				</div>
 				<footer className="flex shrink-0 items-center justify-between gap-3 border-t border-neutral-200 px-6 py-4">

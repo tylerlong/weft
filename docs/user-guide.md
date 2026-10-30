@@ -104,9 +104,13 @@ Agent cleanup releases its own connection while preserving personal pages and lo
 
 **Settings → MCP** stores global external-service definitions and their environment values. These integrations are trusted: the service, account, and token determine access, and Safety Review does not isolate their internal effects.
 
+New services from **Add Jira template** or **Add service** start with **Enabled** checked and environment values visible. Uncheck **Enabled** if you do not want a service used yet. Existing saved enabled/disabled states are preserved. Incomplete custom definitions remain drafts under the normal validation rules.
+
+Each service has **Show values / Hide values**, including disabled services. It reveals or masks all environment values for that service, including credentials; newly added variables follow its current visibility. Existing services start masked. Visibility survives autosaving, but leaving MCP or successfully closing Settings resets every service to masked without clearing invalid or failed-save drafts. Returning to MCP or reopening Settings starts masked. Visibility is temporary and is not saved with configuration. Showing values can expose credentials during screen sharing; hiding is only a display convenience, not access control or encryption. The OpenRouter key and Connection JSON retain their existing behavior.
+
 ### Jira
 
-Choose **Add Jira** for an editable Docker/PAT template. Docker must already be running. Fill `JIRA_URL` and `JIRA_PERSONAL_TOKEN`; the template sets `TOOLSETS=jira` and `READ_ONLY_MODE=false`, so the account's write tools can be available. Use credentials with the access you intend to grant.
+Choose **Add Jira template** for an editable Docker/PAT template. Docker must already be running. Fill `JIRA_URL` and `JIRA_PERSONAL_TOKEN`; the template sets `TOOLSETS=jira` and `READ_ONLY_MODE=false`, so the account's write tools can be available. Use credentials with the access you intend to grant.
 
 The template starts `ghcr.io/sooperset/mcp-atlassian:latest` over stdio with a 120-second startup timeout. Existing service rows are not overwritten by later template updates.
 
@@ -128,7 +132,7 @@ Store environment names/values in the separate fields. For a Streamable HTTP ser
 }
 ```
 
-Add `MCP_AUTH` in that row's masked env fields. HTTPS URLs work the same way. Use another API-key header such as `X-API-Key`, or omit `http_headers` for no authentication. Configure either command/args or url/http_headers in a row. Browser OAuth and legacy SSE fallback are not supported.
+Add `MCP_AUTH` in that row's environment fields. HTTPS URLs work the same way. Use another API-key header such as `X-API-Key`, or omit `http_headers` for no authentication. Configure either command/args or url/http_headers in a row. Browser OAuth and legacy SSE fallback are not supported.
 
 The startup timeout defaults to 120 seconds. `<NAME>` in a JSON string expands from the same row's env values once after parsing, including within string fragments. Keys and substituted values are not expanded again; missing names prevent service startup.
 
@@ -136,7 +140,7 @@ Invalid JSON and failed saves remain as drafts. Close retries retained saves and
 
 ### Changes and diagnostics
 
-Editing or enabling a service applies to the next Agent; saving does not restart existing connections. Disabling/deleting a service blocks subsequent calls immediately, although in-flight calls may return. Each Root and Sub-agent owns and closes its connections. Separate connections/processes do not isolate shared Jira account data.
+Editing or enabling a service applies to the next Agent; saving does not connect, discover tools, restart existing connections, or replay operations. A valid saved enabled definition is eligible for the next Agent’s normal connection attempt; enabled does not mean connected. Jira templates with empty credentials can fail at connection time through normal diagnostics. Disabling/deleting a service blocks subsequent calls immediately, although in-flight calls may return. Each Root and Sub-agent owns and closes its connections. Separate connections/processes do not isolate shared Jira account data.
 
 Agent details show that Agent's connection status, errors, and server stderr. Settings shows configuration feedback only. Calls and errors remain inspectable; Weft does not automatically retry operations.
 

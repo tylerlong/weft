@@ -966,6 +966,7 @@ test("pending readable snapshots protect split credentials and survive an interr
 	);
 	try {
 		const service = jiraMcpService();
+		service.enabled = false;
 		service.env.push(
 			...["type", "text", "message", "output_text"].map((value, index) => ({
 				name: `ENVELOPE_${index}`,

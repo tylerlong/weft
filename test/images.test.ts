@@ -61,6 +61,7 @@ test("user and native tool images preserve exact protocol, record ownership and 
 		fetch(base + route, { method: "POST", body: JSON.stringify(input) });
 	try {
 		const service = jiraMcpService();
+		service.enabled = false;
 		service.env.push(
 			...["type", "text", "image_url", "input_image", "input_text"].map(
 				(value, index) => ({ name: `ENVELOPE_${index}`, value }),
