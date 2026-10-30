@@ -626,6 +626,71 @@ test("cancelling a Colima startup owner releases waiting Agents without rolling 
 	}
 });
 
+test("preparation cancellation kills a resistant owned child after its cooperative leader exits", async () => {
+	const f = await fixture(() => {
+		assert.fail("Cancelled startup must not call a model");
+	});
+	let child: number | undefined;
+	try {
+		const runtime = await dockerFixture(f, {
+			startHang: true,
+			spawnChild: true,
+			childIgnoreTerm: true,
+		});
+		await f.settings([runtime.service]);
+		const id = await f.start();
+		await eventually(async () =>
+			readFile(join(runtime.directory, "child-ready"), "utf8").then(
+				() => true,
+				() => false,
+			),
+		);
+		child = (await runtime.logs()).find(
+			(row) => row.command === "owned-child",
+		)?.pid;
+		assert(child);
+		const childPid = child;
+		await f.send(`/api/agents/${id}/cancel`, {});
+		assert.equal((await waitForAgent(f.base, id)).status, "cancelled");
+		await setTimeout(100);
+		assert.throws(() => process.kill(childPid, 0), { code: "ESRCH" });
+	} finally {
+		if (child) {
+			try {
+				process.kill(child, "SIGKILL");
+			} catch {}
+		}
+		await f.close();
+	}
+});
+
+test("Colima inspection selects the endpoint profile over a conflicting environment default", async () => {
+	const f = await fixture((request) => {
+		mcpTool(request, "jira");
+		return [answer];
+	});
+	try {
+		const runtime = await dockerFixture(f);
+		runtime.service.env.push({ name: "COLIMA_PROFILE", value: "other" });
+		await f.settings([runtime.service]);
+		assert.equal(
+			(await waitForAgent(f.base, await f.start())).status,
+			"succeeded",
+		);
+		assert(
+			(await runtime.logs()).some(
+				(row) =>
+					row.command === "colima" &&
+					row.args[0] === "list" &&
+					row.args.includes("--profile") &&
+					row.args.includes("default"),
+			),
+		);
+	} finally {
+		await f.close();
+	}
+});
+
 test("Jira Docker readiness honors configured endpoint selectors without switching context", async () => {
 	for (const selector of ["host-flag", "host-env", "context-env"]) {
 		const f = await fixture((request) => {

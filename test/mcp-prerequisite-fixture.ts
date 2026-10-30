@@ -57,7 +57,9 @@ if (command === "docker") {
 		if (state.listMalformed) console.log("not JSON");
 		else if (!state.missingProfile) {
 			const profile = JSON.stringify({
-				name: "default",
+				name: args.includes("--profile")
+					? args[args.indexOf("--profile") + 1]
+					: (process.env.COLIMA_PROFILE ?? "default"),
 				status: state.status,
 				runtime: state.runtime,
 			});
@@ -76,7 +78,11 @@ if (command === "docker") {
 				if (state.spawnChild) {
 					const child = spawn(
 						process.execPath,
-						["-e", "setInterval(() => {}, 1000)"],
+						[
+							"-e",
+							`${state.childIgnoreTerm ? "process.on('SIGTERM',()=>{});" : ""}require('node:fs').writeFileSync(process.argv[1],'ready');setInterval(()=>{},1000)`,
+							join(directory, "child-ready"),
+						],
 						{ stdio: "ignore" },
 					);
 					appendFileSync(

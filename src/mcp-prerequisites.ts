@@ -87,6 +87,8 @@ async function run(
 			});
 			child.once("error", reject);
 			child.once("close", (code) => {
+				// The leader can exit while a child with separate stdio still ignores SIGTERM.
+				if (signal.aborted) kill("SIGKILL");
 				clearTimeout(killTimer);
 				signal.removeEventListener("abort", abort);
 				if (signal.aborted) reject(signal.reason);
@@ -190,7 +192,13 @@ export async function prepareMcp(
 			throw new Error(
 				`Colima profile ${profile} has no existing configuration; no runtime was started. ${initial.stderr}`,
 			);
-		const listed = await run("colima", ["list", "--json"], env, signal, report);
+		const listed = await run(
+			"colima",
+			["list", "--json", "--profile", profile],
+			env,
+			signal,
+			report,
+		);
 		if (listed.code !== 0) throw failure("Colima profile inspection", listed);
 		let rows: { name?: string; status?: string; runtime?: string }[];
 		try {
