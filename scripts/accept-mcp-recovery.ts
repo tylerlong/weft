@@ -2,7 +2,13 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	readFileSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,7 +16,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
 import { openDatabase } from "../src/database.ts";
-import { type McpService, parseMcpConfig } from "../src/mcp-config.ts";
+import {
+	type McpService,
+	parseMcpConfig,
+	validateMcpServices,
+} from "../src/mcp-config.ts";
 import type { ModelSettings } from "../src/model-settings.ts";
 import { createServer } from "../src/server.ts";
 
@@ -179,6 +189,27 @@ async function selfCheck() {
 	assert.deepEqual(paidUsage, [{ cost: 0.01 }]);
 	const directory = await mkdtemp(join(tmpdir(), "weft-accept-check-"));
 	try {
+		const inputFile = join(directory, "input.json");
+		const input = {
+			modelId: "configured/model",
+			apiKey: "controlled",
+			providerRouting: "default",
+			safetyReview: true,
+			service: {
+				id: "local",
+				name: "local",
+				enabled: true,
+				config: '{"command":"controlled"}',
+				env: [],
+			},
+		};
+		writeFileSync(inputFile, JSON.stringify(input), { mode: 0o600 });
+		assert.equal(copiedSettings(inputFile).modelId, "configured/model");
+		chmodSync(inputFile, 0o644);
+		assert.throws(() => copiedSettings(inputFile));
+		chmodSync(inputFile, 0o600);
+		writeFileSync(inputFile, JSON.stringify({ ...input, apiKey: "" }));
+		assert.throws(() => copiedSettings(inputFile));
 		const file = join(directory, "service.json");
 		writeFileSync(
 			file,
@@ -207,24 +238,58 @@ async function selfCheck() {
 	);
 }
 
+function copiedSettings(path: string) {
+	const stat = statSync(path);
+	assert(
+		stat.isFile() &&
+			(stat.mode & 0o077) === 0 &&
+			stat.uid === process.getuid?.(),
+		"Copied Settings must be a private owner-only file",
+	);
+	const input = JSON.parse(readFileSync(path, "utf8"));
+	assert(
+		typeof input.modelId === "string" &&
+			input.modelId &&
+			typeof input.apiKey === "string" &&
+			input.apiKey,
+		"Copy the configured default model and key from Settings",
+	);
+	assert(
+		["default", "price", "throughput", "latency"].includes(
+			input.providerRouting,
+		) && typeof input.safetyReview === "boolean",
+		"Copy routing and Jev preferences exactly",
+	);
+	validateMcpServices([input.service]);
+	return input;
+}
+
 async function accept(interruption: AbortSignal) {
 	assert.equal(
 		process.env.WEFT_ACCEPT_PAID,
 		"1",
 		"Set WEFT_ACCEPT_PAID=1 to deliberately invoke paid acceptance",
 	);
-	const source = new URL(process.env.WEFT_ACCEPT_SOURCE ?? "");
+	const input = process.env.WEFT_ACCEPT_INPUT
+		? copiedSettings(process.env.WEFT_ACCEPT_INPUT)
+		: undefined;
+	const source = input
+		? undefined
+		: new URL(process.env.WEFT_ACCEPT_SOURCE ?? "");
 	assert(
-		["127.0.0.1", "localhost", "[::1]"].includes(source.hostname) &&
-			source.protocol === "http:",
+		input ||
+			(source &&
+				["127.0.0.1", "localhost", "[::1]"].includes(source.hostname) &&
+				source.protocol === "http:"),
 		"Source must be the existing loopback Weft server",
 	);
 	const sourceToken = process.env.WEFT_ACCEPT_TOKEN;
 	assert(
-		sourceToken,
+		input || sourceToken,
 		"Supply the existing session's management token locally; never commit it",
 	);
 	const get = async (route: string) => {
+		assert(source && sourceToken);
 		const response = await fetch(new URL(route, source), {
 			headers: { "x-weft-management-token": sourceToken },
 			signal: AbortSignal.any([interruption, AbortSignal.timeout(10000)]),
@@ -232,12 +297,23 @@ async function accept(interruption: AbortSignal) {
 		assert(response.ok, `Source GET ${route} failed: ${response.status}`);
 		return response.json();
 	};
-	const [settings, credential, mcp, safety] = await Promise.all([
-		get("/api/model-settings") as Promise<ModelSettings>,
-		get("/api/settings/credential"),
-		get("/api/mcp-settings"),
-		get("/api/safety-review"),
-	]);
+	const [settings, credential, mcp, safety] = input
+		? [
+				{
+					defaultModelId: input.modelId,
+					models: [{ id: input.modelId, name: input.modelId }],
+					providerRouting: input.providerRouting,
+				},
+				{ apiKey: input.apiKey },
+				{ services: [input.service] },
+				{ safetyReview: input.safetyReview },
+			]
+		: await Promise.all([
+				get("/api/model-settings") as Promise<ModelSettings>,
+				get("/api/settings/credential"),
+				get("/api/mcp-settings"),
+				get("/api/safety-review"),
+			]);
 	const model = settings.models.find(
 		(item) => item.id === settings.defaultModelId,
 	);
@@ -303,15 +379,11 @@ async function accept(interruption: AbortSignal) {
 		writeFileSync(file, JSON.stringify(config), { mode: 0o600 });
 		const database = openDatabase(databasePath, false);
 		database
-			.prepare("INSERT INTO managed_models(id,name,metadata) VALUES(?,?,?)")
-			.run(model.id, model.name, JSON.stringify(model));
-		database
 			.prepare(
-				"UPDATE settings SET api_key=?,default_model_id=?,provider_routing=?,safety_review=?,model_call_limit=16 WHERE id=1",
+				"UPDATE settings SET api_key=?,provider_routing=?,safety_review=?,model_call_limit=16 WHERE id=1",
 			)
 			.run(
 				credential.apiKey,
-				model.id,
 				settings.providerRouting,
 				Number(safety.safetyReview),
 			);
@@ -382,6 +454,7 @@ async function accept(interruption: AbortSignal) {
 			"PUT",
 		);
 		await send("/api/model-catalog");
+		await send("/api/models", { id: model.id });
 		const project = await send("/api/projects", {
 			name: "Deliberate MCP acceptance",
 			folders: [],

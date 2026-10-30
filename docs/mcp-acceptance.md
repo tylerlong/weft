@@ -1,6 +1,6 @@
 # MCP 独立真实模型验收（#217）
 
-此验收是单独、明确调用的付费动作，不属于默认单元测试、普通测试命令或 CI。它使用当前 Settings 中的默认 OpenRouter 模型、路由偏好、Jev 开关和已启用 Jira Docker 服务；源服务器只收到管理 API 的 GET，不修改用户 Settings、Chat、运行数据库或基础设施。
+此验收是单独、明确调用的付费动作，不属于默认单元测试、普通测试命令或 CI。它使用当前 Settings 中的默认 OpenRouter 模型、路由偏好、Jev 开关和已启用 Jira Docker 服务；有普通管理 URL 时，源服务器只收到管理 API 的 GET；桌面会话没有导出入口时，也可由用户正常 Settings 界面复制现有值到权限受限的临时输入。两种方式都不修改用户 Settings、Chat、运行数据库或基础设施。
 
 ## 明确调用
 
@@ -16,6 +16,12 @@ unset WEFT_ACCEPT_TOKEN
 
 上例 `read` 为 zsh 语法；服务器使用随机端口时替换 origin。存在多个启用的 Jira Docker 服务时，通过 `WEFT_ACCEPT_SERVICE_ID` 选择稳定服务身份。凭据输入与服务配置仍由用户在 Settings 管理，验收脚本不会替代这一界面。
 
+桌面会话没有普通管理 URL 时，支持 `WEFT_ACCEPT_INPUT=/absolute/private/input.json` 替代源 URL／管理令牌。输入只用于本次隔离验收，必须由当前用户拥有、权限不向组／其他用户开放（例如 `chmod 600`），内容为从正常 Settings 复制的现有 `modelId`、`apiKey`、`providerRouting`、`safetyReview` 与单个 `service`（沿用服务的 `name`、`enabled`、`config`、`env`；仅隔离副本可使用自己的稳定 `id`）。不要读取运行数据库或进程内存来填充它；受保护 key 字段不能正常复制时，由用户从自己的凭据来源复制到本机，不贴到聊天。模型采用源默认模型和 model-default effort，隔离服务器通过普通模型目录 API 发现真实模型 metadata，不虚构其能力。此输入不是新的生产配置来源，运行结束后删除临时输入和中间副本。
+
+```sh
+WEFT_ACCEPT_INPUT=/absolute/private/input.json WEFT_ACCEPT_PAID=1 node scripts/accept-mcp-recovery.ts
+```
+
 不付费的脚本自检可以单独运行：
 
 ```sh
@@ -30,7 +36,7 @@ pnpm exec tsc --ignoreConfig --noEmit --target es2022 --module nodenext --allowI
 
 ## 实际步骤与范围
 
-1. 通过已认证的 GET 读取模型／key、MCP 配置与 Jev 开关。要求所选 Docker endpoint 的 `docker info` 已成功；不可达时停止，不启动／重启用户运行时。
+1. 通过已认证的 GET，或正常 UI 复制的私有临时输入，读取模型／key、MCP 配置与 Jev 开关。要求所选 Docker endpoint 的 `docker info` 已成功；不可达时停止，不启动／重启用户运行时。
 2. 在权限受限的临时目录创建独立数据库及本地服务配置，按源默认模型执行，单次验收上限 16 个 Model Call（包含 Jev）、4 分钟。隔离验收设置此较小预算，不修改用户的默认 128 或已保存显式上限。
 3. 仅在隔离服务的首次启动中注入明确的受控错误。再次启动透明运行原 Jira MCP 命令，原凭据只沿本地配置／环境传给该程序；wrapper 不是受支持 Docker 启动形状，不触发真实 Colima 前置恢复。
 4. 真实模型被明确要求依次使用 `mcp_diagnostics`、`mcp_startup`、实际发现的 `jira_search`，只读查询 `assignee = currentUser() AND updated >= -24h`，最多五项。这个 prompt 验证指定序列的可用性，不证明模型在无提示时能自主诊断。
@@ -44,5 +50,5 @@ pnpm exec tsc --ignoreConfig --noEmit --target es2022 --module nodenext --allowI
 - #214–#216 的诊断、同一 Agent 生命周期与确定性前置处理已实现，并通过受控 stdio／HTTP／进程回归及 Linux／macOS CI。
 - `test/mcp.test.ts` 覆盖禁用／失败、凭据省略、Settings 采用／显式替换、Root／Sub-agent 隔离、完整发现／失败不发布部分目录、旧处理器失效、无回退／重放、时限／取消、Docker／Colima 已覆盖状态及并发准备。`test/tool-review.test.ts` 与 `test/safety-review.test.ts` 覆盖逐 Tool Call Jev 开关、一次复合操作审核、阻止／故障不执行、预算及可信运行数据库策略。mock 决策不证明真实风险分类。
 - 原始 Docker 不可达事件只证明启动失败，没有证明 Jira 凭据失败或已发现 schema 难懂。凭据保留在本地 MCP 执行路径，记录脱敏不变；没有新增生产出站／模型输出脱敏或文件系统隔离，也不把 ZDR 假设当作已验证保证。
-- **真实模型验收尚未执行。** 本次工作时 Mac 处于锁定状态，CUA 无法打开已有已认证 Weft 会话；没有提取进程凭据或直接读取用户运行数据库绕过这一限制。获得正常会话访问后，按上述命令执行并补充模型、序列、结果、调用数与返回费用，不能据脚本自检或 CI 宣称已通过。
+- **真实模型验收尚未执行。** 最初 Mac 锁定，随后解锁并通过正常 Settings 界面取得现有 Jira 配置；受保护 key 字段不能正常复制，用户另行将 key 复制到本机，经明确允许后只转入权限受限临时文件。配置未写回源 Settings。实际验收在付费请求前被 Docker readiness 前置检查阻止：`unix:///Users/tyler.liu/.colima/default/docker.sock` 不可达，而只读 `colima list --json --profile default` 报告 `Running`、`docker`。这是运行中 VM 的异常，不能当作停止 profile 启动或自动重启；未操作基础设施。此次发送的付费 Model Call／Jira Tool Call 都为零，无返回 usage／cost。用户修复实际 daemon 后须重新执行并记录真实模型／Jira证据，不能据脚本自检或 CI 宣称通过。
 - 已知原生 shell 取消竞态 [#193](https://github.com/tylerlong/weft/issues/193) 不属于此次修复；先前阶段曾复现，后续通过不表示已修复。
