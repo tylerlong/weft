@@ -651,7 +651,7 @@ test("Settings URL and masked token save through to an actual HTTP model tool ca
 				output: [
 					{
 						type: "function_call",
-						name: "mcp_0_0",
+						name: "mcp_tool_0",
 						call_id: "http-ui",
 						arguments: JSON.stringify({
 							mode: "mixed",
