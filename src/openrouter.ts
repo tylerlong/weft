@@ -212,7 +212,7 @@ export async function requestModel(
 	let requests = 0;
 	const checkBudget = () => {
 		loop?.signal?.throwIfAborted();
-		if (requests >= (loop?.limit() ?? 16))
+		if (requests >= (loop?.limit() ?? 128))
 			throw new ModelError(
 				"modelCallLimit",
 				"Agent reached the model request limit",
@@ -260,7 +260,7 @@ export async function requestModel(
 			input.push(...events);
 			continue;
 		}
-		const atLimit = requests >= (loop?.limit() ?? 16);
+		const atLimit = requests >= (loop?.limit() ?? 128);
 		record?.tools?.(response.tools, atLimit ? "modelCallLimit" : undefined);
 		if (atLimit)
 			throw new ModelError(

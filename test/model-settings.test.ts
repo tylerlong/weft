@@ -388,7 +388,7 @@ test("fresh database has empty model settings with no environment fallback", asy
 				default_model_id: null,
 				enter_behavior: "send",
 				follow_up_behavior: "queue",
-				model_call_limit: 16,
+				model_call_limit: 128,
 				sub_agent_limit: 32,
 				safety_review: 1,
 				provider_routing: "default",

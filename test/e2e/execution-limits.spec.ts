@@ -24,7 +24,7 @@ for (const chinese of [false, true]) {
 			.getByRole("tab", { name: chinese ? "执行" : "Execution", exact: true })
 			.click();
 		const region = page.getByRole("region", { name: title, exact: true });
-		await expect(region.getByLabel(calls, { exact: true })).toHaveValue("16");
+		await expect(region.getByLabel(calls, { exact: true })).toHaveValue("128");
 		await expect(region.getByLabel(descendants, { exact: true })).toHaveValue(
 			"32",
 		);
@@ -37,7 +37,7 @@ for (const chinese of [false, true]) {
 		).toBe(false);
 		expect(
 			await (await page.request.get(`${app.url}/api/execution-limits`)).json(),
-		).toEqual({ modelCallLimit: 16, subAgentLimit: 32 });
+		).toEqual({ modelCallLimit: 128, subAgentLimit: 32 });
 		await region.getByLabel(calls, { exact: true }).fill("7");
 		await region.getByLabel(descendants, { exact: true }).fill("11");
 		await region.getByRole("heading").click();
@@ -109,7 +109,7 @@ test("execution fields save independently and retain invalid drafts across tabs"
 		.poll(async () =>
 			(await page.request.get(`${app.url}/api/execution-limits`)).json(),
 		)
-		.toEqual({ modelCallLimit: 16, subAgentLimit: 11 });
+		.toEqual({ modelCallLimit: 128, subAgentLimit: 11 });
 	await page.getByRole("tab", { name: "Execution", exact: true }).click();
 	await expect(calls).toHaveValue("");
 	await expect(descendants).toHaveValue("11");

@@ -697,7 +697,7 @@ for (const mode of ["failure", "limit"])
 		}
 	});
 
-test("defaults are 16/32 and completed descendants retain slots while invalid creation consumes none", async () => {
+test("defaults are 128/32 and completed descendants retain slots while invalid creation consumes none", async () => {
 	let capAttempted = false;
 	let childRequests = 0;
 	const f = await fixture(async (_url, init) => {
@@ -733,7 +733,7 @@ test("defaults are 16/32 and completed descendants retain slots while invalid cr
 						)
 						.get(),
 				},
-				{ model_call_limit: 16, sub_agent_limit: 32 },
+				{ model_call_limit: 128, sub_agent_limit: 32 },
 			);
 			db.prepare("UPDATE settings SET sub_agent_limit=1 WHERE id=1").run();
 		} finally {
