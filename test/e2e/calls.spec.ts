@@ -117,6 +117,7 @@ test("communication is lazy, formatted and copied as displayed text, retained ac
 			{ type: "function", name: "exec_command" },
 			{ type: "function", name: "write_stdin" },
 			{ type: "function", name: "read_tool_output" },
+			{ type: "function", name: "mcp_diagnostics" },
 			{ type: "function", name: "create_sub_agent" },
 			{ type: "function", name: "cancel_sub_agent" },
 		],
