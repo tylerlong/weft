@@ -171,7 +171,7 @@ for (const chinese of [false, true]) {
 		await expect(values.nth(1)).toHaveAttribute("type", "text");
 		await expect(values.nth(0)).toHaveValue("");
 		await expect(values.nth(1)).toHaveValue("");
-		await expect(values.nth(2)).toHaveValue("jira");
+		await expect(values.nth(2)).toHaveValue("all");
 		await expect(values.nth(3)).toHaveValue("false");
 		await expect
 			.poll(

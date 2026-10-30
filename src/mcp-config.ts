@@ -162,7 +162,7 @@ export const jiraMcpService = (): McpService => ({
 	env: [
 		{ name: "JIRA_URL", value: "" },
 		{ name: "JIRA_PERSONAL_TOKEN", value: "" },
-		{ name: "TOOLSETS", value: "jira" },
+		{ name: "TOOLSETS", value: "all" },
 		{ name: "READ_ONLY_MODE", value: "false" },
 	],
 });

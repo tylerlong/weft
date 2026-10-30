@@ -27,6 +27,22 @@ import { createServer } from "../src/server.ts";
 type Tool = { name: string; description?: string };
 const script = fileURLToPath(import.meta.url);
 
+function localRequest(
+	origin: string,
+	token: string,
+	route: string,
+	body?: unknown,
+	method = body ? "POST" : "GET",
+	signal?: AbortSignal,
+) {
+	return fetch(origin + route, {
+		method,
+		headers: { "x-weft-management-token": token, Origin: origin },
+		...(body ? { body: JSON.stringify(body) } : {}),
+		signal,
+	});
+}
+
 function completed(
 	text: string,
 	observe: (response: Record<string, unknown>) => void = () => {},
@@ -230,11 +246,77 @@ async function selfCheck() {
 			}).trim(),
 			"second launch",
 		);
+		const path = join(directory, "setup.sqlite");
+		const database = openDatabase(path, false);
+		database
+			.prepare("UPDATE settings SET api_key='controlled' WHERE id=1")
+			.run();
+		database.close();
+		let paidCalls = 0;
+		const server = createServer(
+			async () => {
+				paidCalls++;
+				throw new Error("Self-check must not call models");
+			},
+			path,
+			async () =>
+				Response.json({
+					data: [
+						{
+							id: "acceptance/model",
+							name: "Controlled model",
+							architecture: { output_modalities: ["text"] },
+						},
+					],
+				}),
+			undefined,
+			undefined,
+			join(directory, "no-user-config"),
+		);
+		try {
+			server.listen(0, "127.0.0.1");
+			await once(server, "listening");
+			const address = server.address();
+			assert(address && typeof address !== "string");
+			const origin = `http://127.0.0.1:${address.port}`;
+			const send = async (route: string, body?: unknown, method?: string) => {
+				const response = await localRequest(
+					origin,
+					server.managementToken,
+					route,
+					body,
+					method,
+				);
+				assert(
+					response.ok,
+					`Self-check setup ${route} failed: ${response.status}`,
+				);
+				return response.json();
+			};
+			await send("/api/mcp-settings", { services: [] }, "PUT");
+			await send("/api/model-catalog");
+			await send("/api/models", { id: "acceptance/model" });
+			const project = await send("/api/projects", {
+				name: "Controlled acceptance setup",
+				folders: [],
+			});
+			const chat = await send(`/api/projects/${project.id}/chats`, {
+				name: "No model calls",
+			});
+			assert.equal(
+				(await send(`/api/chats/${chat.id}`)).chatOptions.modelId,
+				"acceptance/model",
+			);
+			assert.equal(paidCalls, 0);
+		} finally {
+			server.closeAllConnections();
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		}
 	} finally {
 		await rm(directory, { recursive: true, force: true });
 	}
 	console.log(
-		"Acceptance self-check passed; no network, paid model, or Docker access.",
+		"Acceptance self-check passed; no external network, paid model, or Docker access.",
 	);
 }
 
@@ -368,6 +450,9 @@ async function accept(interruption: AbortSignal) {
 	const usage: unknown[] = [];
 	let modelCalls = 0;
 	let outcome = "failed";
+	let setupFailure:
+		| { route: string; status: number; code?: string }
+		| undefined;
 	let sequence: { name: string; status: string }[] = [];
 	let readSequence:
 		| (() => Promise<{ name: string; status: string }[]>)
@@ -428,13 +513,25 @@ async function accept(interruption: AbortSignal) {
 			body?: unknown,
 			method = body ? "POST" : "GET",
 		) => {
-			const response = await fetch(`http://127.0.0.1:${address.port}${route}`, {
+			const response = await localRequest(
+				`http://127.0.0.1:${address.port}`,
+				server.managementToken,
+				route,
+				body,
 				method,
-				headers: { "x-weft-management-token": server.managementToken },
-				...(body ? { body: JSON.stringify(body) } : {}),
-				signal: deadline,
-			});
-			assert(response.ok, `Isolated ${route} failed: ${response.status}`);
+				deadline,
+			);
+			if (!response.ok) {
+				const body = await response.json().catch(() => ({}));
+				setupFailure = {
+					route,
+					status: response.status,
+					...(typeof body.code === "string" && /^[a-zA-Z0-9]+$/.test(body.code)
+						? { code: body.code }
+						: {}),
+				};
+				throw new Error("Isolated acceptance API request failed");
+			}
 			return response.json();
 		};
 		await send(
@@ -526,6 +623,7 @@ async function accept(interruption: AbortSignal) {
 					modelCalls,
 					usage,
 					outcome,
+					setupFailure,
 					sequence,
 					sequenceSnapshotBeforeCleanup: true,
 					controlledFailure: true,

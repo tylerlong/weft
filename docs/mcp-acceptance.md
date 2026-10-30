@@ -4,7 +4,7 @@
 
 ## 明确调用
 
-先打开已有 Weft 会话并使用该会话的管理凭据；不要读取运行数据库、进程内存或导出整个 Settings。管理凭据只能留在本机，不提交到仓库、不贴到 issue 或聊天。设置本机现有服务器 origin，使用不回显的 shell 输入令牌：
+先打开已有 Weft 会话并使用该会话的管理凭据；任务模型不得读取运行数据库或进程内存，也不要向模型导出整个 Settings。管理凭据只能留在本机，不提交到仓库、不贴到 issue 或聊天。设置本机现有服务器 origin，使用不回显的 shell 输入令牌：
 
 ```sh
 export WEFT_ACCEPT_SOURCE=http://127.0.0.1:3000
@@ -16,7 +16,7 @@ unset WEFT_ACCEPT_TOKEN
 
 上例 `read` 为 zsh 语法；服务器使用随机端口时替换 origin。存在多个启用的 Jira Docker 服务时，通过 `WEFT_ACCEPT_SERVICE_ID` 选择稳定服务身份。凭据输入与服务配置仍由用户在 Settings 管理，验收脚本不会替代这一界面。
 
-桌面会话没有普通管理 URL 时，支持 `WEFT_ACCEPT_INPUT=/absolute/private/input.json` 替代源 URL／管理令牌。输入只用于本次隔离验收，必须由当前用户拥有、权限不向组／其他用户开放（例如 `chmod 600`），内容为从正常 Settings 复制的现有 `modelId`、`apiKey`、`providerRouting`、`safetyReview` 与单个 `service`（沿用服务的 `name`、`enabled`、`config`、`env`；仅隔离副本可使用自己的稳定 `id`）。不要读取运行数据库或进程内存来填充它；受保护 key 字段不能正常复制时，由用户从自己的凭据来源复制到本机，不贴到聊天。模型采用源默认模型和 model-default effort，隔离服务器通过普通模型目录 API 发现真实模型 metadata，不虚构其能力。此输入不是新的生产配置来源，运行结束后删除临时输入和中间副本。
+桌面会话没有普通管理 URL 时，支持 `WEFT_ACCEPT_INPUT=/absolute/private/input.json` 替代源 URL／管理令牌。输入只用于本次隔离验收，必须由当前用户拥有、权限不向组／其他用户开放（例如 `chmod 600`），内容为从正常 Settings 复制的现有 `modelId`、`apiKey`、`providerRouting`、`safetyReview` 与单个 `service`（沿用服务的 `name`、`enabled`、`config`、`env`；仅隔离副本可使用自己的稳定 `id`）。任务 Agent 不得直接读取运行数据库或进程内存来填充它；受保护 key 字段不能正常复制时，由用户从自己的凭据来源复制到本机，不贴到聊天。模型采用源默认模型和 model-default effort，隔离服务器通过普通模型目录 API 发现真实模型 metadata，不虚构其能力。此输入不是新的生产配置来源，运行结束后删除临时输入和中间副本。用户也可单独明确授权开发者设置步骤使用原生 SQLite backup API：只读打开真实源库，创建一致且 owner-only 的临时快照，在模型工作目录外仅提取配置填入此输入，随即删除含历史的快照；实际 Agent 仍使用另一空白隔离库，不执行复制的 Chat，也不获得数据库访问工具。此开发者授权不改变任务模型／Jev 的运行数据库策略。
 
 ```sh
 WEFT_ACCEPT_INPUT=/absolute/private/input.json WEFT_ACCEPT_PAID=1 node scripts/accept-mcp-recovery.ts
@@ -28,7 +28,7 @@ WEFT_ACCEPT_INPUT=/absolute/private/input.json WEFT_ACCEPT_PAID=1 node scripts/a
 node scripts/accept-mcp-recovery.ts --check
 ```
 
-自检只用本地受控进程验证首次启动失败／再次启动透传，以及拒绝非允许工具的执行门控，不访问网络、Docker 或模型。脚本不在普通命令／CI 中注册；需要检查脚本本身的类型时使用：
+自检使用本地受控进程和 loopback 临时服务器，验证首次启动失败／再次启动透传、非允许工具门控及真实管理 API 的 Origin／认证／模型目录／Project／Chat 设置路径；目录响应受控且断言零 Model Call，不访问外部网络、Docker 或付费模型。脚本不在普通命令／CI 中注册；需要检查脚本本身的类型时使用：
 
 ```sh
 pnpm exec tsc --ignoreConfig --noEmit --target es2022 --module nodenext --allowImportingTsExtensions --strict --skipLibCheck --types node --lib es2022,dom scripts/accept-mcp-recovery.ts
@@ -50,5 +50,24 @@ pnpm exec tsc --ignoreConfig --noEmit --target es2022 --module nodenext --allowI
 - #214–#216 的诊断、同一 Agent 生命周期与确定性前置处理已实现，并通过受控 stdio／HTTP／进程回归及 Linux／macOS CI。
 - `test/mcp.test.ts` 覆盖禁用／失败、凭据省略、Settings 采用／显式替换、Root／Sub-agent 隔离、完整发现／失败不发布部分目录、旧处理器失效、无回退／重放、时限／取消、Docker／Colima 已覆盖状态及并发准备。`test/tool-review.test.ts` 与 `test/safety-review.test.ts` 覆盖逐 Tool Call Jev 开关、一次复合操作审核、阻止／故障不执行、预算及可信运行数据库策略。mock 决策不证明真实风险分类。
 - 原始 Docker 不可达事件只证明启动失败，没有证明 Jira 凭据失败或已发现 schema 难懂。凭据保留在本地 MCP 执行路径，记录脱敏不变；没有新增生产出站／模型输出脱敏或文件系统隔离，也不把 ZDR 假设当作已验证保证。
-- **真实模型验收尚未执行。** 最初 Mac 锁定，随后解锁并通过正常 Settings 界面取得现有 Jira 配置；受保护 key 字段不能正常复制，用户另行将 key 复制到本机，经明确允许后只转入权限受限临时文件。配置未写回源 Settings。实际验收在付费请求前被 Docker readiness 前置检查阻止：`unix:///Users/tyler.liu/.colima/default/docker.sock` 不可达，而只读 `colima list --json --profile default` 报告 `Running`、`docker`。只读复核进一步确认：两次宿主 `docker info` 均失败，宿主 socket 文件存在但定向 `lsof` 未找到持有进程；强制使用 guest `/var/run/docker.sock` 的 `colima ssh ... docker info` 成功返回 Docker 29.5.2，而宿主 socket 的 HTTP `_ping` 立即连接失败。故障边界高置信度位于宿主到 VM 的 Docker socket 转发，非 VM 中 dockerd 未运行；尚未确定转发进程为何退出。这不属于停止 profile 的确定性启动情况，未自动重启或修改基础设施。此次发送的付费 Model Call／Jira Tool Call 都为零，无返回 usage／cost。用户修复实际 daemon 后须重新执行并记录真实模型／Jira证据，不能据脚本自检或 CI 宣称通过。
+- 运行时前置阻塞曾真实复现：Colima `default` 为 `Running/docker`，guest 强制 `/var/run/docker.sock` 的 Docker info 成功（29.5.2），但匹配配置的宿主 socket `_ping` 连接失败且 `lsof` 无持有进程。高置信度故障边界是宿主到 VM 的 socket 转发，未确定转发进程退出原因；这不是停止 profile，应用没有自动重启它。用户随后单独授权一次 graceful stop（3.8 秒）与保护参数 start（12.3 秒），宿主 Docker 恢复。stop 短暂切到 default context，已恢复原 colima context；最终 profile YAML、Docker config.json、SSH config 的 SHA-256 与原 context／endpoint 均完全一致。此人工授权动作不属于 Weft 自动恢复能力。
+- 用户明确授权只读源库的原生一致 backup。仅配置被提取到 owner-only 临时输入；含原 Chat 历史的快照在 Agent 开始前即删除。没有修改源数据库／Settings、导出凭据到模型或执行源 Chat。先前 clipboard 路线的全部私有副本也已删除。
+
+### 2026-10-30 实际模型与 Jira
+
+实际配置模型 `z-ai/glm-5.3-flash`，model-default effort、OpenRouter default 路由；Jev 开启，实际解析为 `typesafe/jev-1.14-20261014`。每次使用独立空白隔离 Weft server／数据库，不打开浏览器或创建可见的用户 Chat。故障来自仅第一次启动失败的受控 wrapper；随后运行真实 Jira Docker MCP。完整真实工具目录和原始允许响应保留。
+
+| 条件 | 实际 Tool Call 顺序 | 结果 | Model Call（任务／Jev） | 返回 input／output tokens | 返回 cost（USD） |
+| --- | --- | --- | --- | --- | --- |
+| 原保存 `TOOLSETS=jira` | diagnostics → startup → diagnostics → diagnostics | 客户端连接成功但零工具，未执行 Jira search | 9（5／4） | 29,393／3,957 | 0.005423022 |
+| 仅隔离副本改为 `TOOLSETS=all` | `mcp_diagnostics` → `mcp_startup` → `mcp_tool_5`（实际 `jira_search`） | 三次 Tool Call 均 succeeded，Agent succeeded；先前受控启动错误已被诊断观察 | 7（4／3） | 50,426／1,743 | 0.008100780 |
+
+两次真实运行共 16 个 Model Call，返回 cost 合计 **0.013523802 USD**。此前 Docker／Origin 设置阶段失败均在模型请求前，零额外付费 Model Call。实际 Jev 对每个已执行 Tool Call 各审核一次；此次允许结果不证明一般风险分类质量。
+
+请求的业务任务是查询 currentUser() 在过去 24 小时更新的最多五张票；**观察到的证据是实际 `jira_search` 成功，不是精确 JQL／结果数量已验证**。验收只保留安全名称／状态／用量摘要，精确执行参数、票据数量与内容未保留，不能伪造或据此声称过滤语义已核对。
+
+实际 image 为 MCP Atlassian **0.21.1**（revision `4e2b836a89dca2fc374133acca0d793f6b29f50c`）。其[固定版本配置说明](https://github.com/sooperset/mcp-atlassian/blob/4e2b836a89dca2fc374133acca0d793f6b29f50c/.env.example#L148-L158) 明确：未知 toolset 被忽略、全部未知时 fail-closed 零工具；`jira` 不是已知组，`all` 是受支持别名。[固定工具表](https://github.com/sooperset/mcp-atlassian/blob/4e2b836a89dca2fc374133acca0d793f6b29f50c/docs/tools-reference.mdx#L53-L70) 定义 `jira_issues` 等组。仅改隔离副本后，独立真实发现得到 **49 个 Jira 工具、包含 jira_search、无 Confluence／其他工具**。新 Jira 模板已改为 `all` 并有 en／zh 设置回归；已有保存行不被覆盖。**用户原保存服务仍为 `TOOLSETS=jira`，需用户在 Settings 改为 `all` 或受支持组后才具备工具。**
+
+真实 Jira 认证／搜索、真实任务模型和真实 Jev 通信已验证；首次失败及恢复触发为受控服务行为，不证明真实 Colima 停机恢复或模型无提示自主诊断。凭据／临时输入／快照与隔离数据库均已删除，未保留 Jira 输出正文。未进行 Jira 写入、外部 HTTP MCP 验收或一般 Jev 分类实验。
+
 - 已知原生 shell 取消竞态 [#193](https://github.com/tylerlong/weft/issues/193) 不属于此次修复；先前阶段曾复现，后续通过不表示已修复。

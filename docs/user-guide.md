@@ -110,9 +110,9 @@ Each service has **Show values / Hide values**, including disabled services. It 
 
 ### Jira
 
-Choose **Add Jira template** for an editable Docker/PAT template. Docker must already be running. Fill `JIRA_URL` and `JIRA_PERSONAL_TOKEN`; the template sets `TOOLSETS=jira` and `READ_ONLY_MODE=false`, so the account's write tools can be available. Use credentials with the access you intend to grant.
+Choose **Add Jira template** for an editable Docker/PAT template. Fill `JIRA_URL` and `JIRA_PERSONAL_TOKEN`; the template sets `TOOLSETS=all` and `READ_ONLY_MODE=false`, so all configured Jira tools, including writes, can be available. Startup checks Docker readiness and can start a confidently identified existing stopped Colima profile; a running VM with an unavailable Docker endpoint remains an error. Use credentials with the access you intend to grant.
 
-The template starts `ghcr.io/sooperset/mcp-atlassian:latest` over stdio with a 120-second startup timeout. Existing service rows are not overwritten by later template updates.
+The template starts `ghcr.io/sooperset/mcp-atlassian:latest` over stdio with a 120-second startup timeout. Existing service rows are not overwritten by later template updates. For MCP Atlassian 0.21.1, an older saved `TOOLSETS=jira` selects no tools because `jira` is not a recognized toolset; correct it in Settings to `all` (or a supported named group). See the [acceptance evidence](mcp-acceptance.md) for the pinned upstream contract.
 
 ### Custom services
 
@@ -140,7 +140,7 @@ Invalid JSON and failed saves remain as drafts. Close retries retained saves and
 
 ### Changes and diagnostics
 
-Editing or enabling a service applies to the next Agent; saving does not connect, discover tools, restart existing connections, or replay operations. A valid saved enabled definition is eligible for the next Agent’s normal connection attempt; enabled does not mean connected. Jira templates with empty credentials can fail at connection time through normal diagnostics. Disabling/deleting a service blocks subsequent calls immediately, although in-flight calls may return. Each Root and Sub-agent owns and closes its connections. Separate connections/processes do not isolate shared Jira account data.
+Editing or enabling a service does not replace an active client automatically. An Agent can use `mcp_diagnostics` for safe current Settings/runtime facts and `mcp_startup` with the stable service ID to adopt the latest saved configuration in the same Agent; otherwise the next Agent uses it during initialization. Replacement removes old tools first, publishes only complete discovery, and leaves the selected service unavailable on failure without fallback or replay. A selected-service edit during Safety Review returns a retry result before replacing the old client. Enabled does not mean connected, and connected does not guarantee any tools or later call success. Jira templates with empty credentials can fail at connection time through normal diagnostics. Disabling/deleting a service blocks subsequent calls immediately, although in-flight calls may return. Each Root and Sub-agent owns and closes its connections. Separate connections/processes do not isolate shared Jira account data.
 
 Agent details show that Agent's connection status, errors, and server stderr. Settings shows configuration feedback only. Calls and errors remain inspectable; Weft does not automatically retry operations.
 
