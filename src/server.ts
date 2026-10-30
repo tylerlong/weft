@@ -37,7 +37,11 @@ import {
 	type McpConnection,
 	mcpStartupTool,
 } from "./mcp-client.ts";
-import { type McpService, validateMcpServices } from "./mcp-config.ts";
+import {
+	type McpService,
+	parseMcpConfig,
+	validateMcpServices,
+} from "./mcp-config.ts";
 import {
 	mcpDiagnostics,
 	mcpDiagnosticsTool,
@@ -1203,18 +1207,36 @@ export function createServer(
 									"MCP service disabled or deleted; startup was not executed",
 								);
 							for (const secret of mcpSecrets([service])) rememberKey(secret);
+							const launch = parseMcpConfig(service.config);
+							const credentialReferences = (value: string) => {
+								for (const variable of service.env)
+									if (variable.value)
+										value = value.replaceAll(
+											variable.value,
+											`<${variable.name}>`,
+										);
+								return redactTool(value);
+							};
 							await review?.({
 								name,
 								description: mcpStartupTool.description,
 								arguments: value,
 								execution: {
 									service: mcpDiagnostics([service], [], redactTool)[0],
+									...("url" in launch
+										? {}
+										: {
+												launch: {
+													command: credentialReferences(launch.command),
+													args: launch.args.map(credentialReferences),
+												},
+											}),
 									effect:
 										"Replace only this Agent's MCP client, prepare supported prerequisites, initialize and discover all tools using latest saved Settings; executes the configured stdio program or contacts its HTTP endpoint with locally supplied credentials. No business calls are replayed.",
 								},
 							});
 							signal?.throwIfAborted();
-							const connection = await mcp?.startup(value.service_id);
+							const connection = await mcp?.startup(service);
 							return {
 								status:
 									connection?.status === "connected" ? "succeeded" : "failed",

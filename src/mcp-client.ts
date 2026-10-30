@@ -102,11 +102,10 @@ export async function connectMcp(
 		void close().catch(() => {});
 	};
 	signal.addEventListener("abort", cancelled, { once: true });
-	const startup = async (serviceId: string, initial?: McpService) => {
+	const startup = async (service: McpService) => {
+		const serviceId = service.id;
 		signal.throwIfAborted();
 		if (closing) throw new Error("MCP manager closed");
-		const service =
-			initial ?? readServices().find((row) => row.id === serviceId);
 		if (!service?.enabled)
 			throw new Error(
 				"MCP service disabled or deleted; startup was not executed",
@@ -157,6 +156,10 @@ export async function connectMcp(
 			startupSignal.addEventListener("abort", abortStartup, { once: true });
 			try {
 				startupSignal.throwIfAborted();
+				if (!readServices().some((row) => row.id === serviceId && row.enabled))
+					throw new Error(
+						"MCP service disabled or deleted; startup was not executed",
+					);
 				const transport =
 					"url" in config
 						? new StreamableHTTPClientTransport(new URL(config.url), {
@@ -228,15 +231,14 @@ export async function connectMcp(
 									},
 								}),
 							};
+							const available = () =>
+								!resource.close && resources.get(service.id)?.client === client;
+							const unavailable: ToolExecution = {
+								status: "failed",
+								result: "MCP service unavailable; explicitly start it again",
+							};
 							if (!enabled()) return disabled;
-							if (
-								resource.close ||
-								resources.get(service.id)?.client !== client
-							)
-								return {
-									status: "failed",
-									result: "MCP service unavailable; explicitly start it again",
-								};
+							if (!available()) return unavailable;
 							try {
 								const argumentsValue: unknown = JSON.parse(args);
 								if (
@@ -253,15 +255,7 @@ export async function connectMcp(
 								});
 								signal.throwIfAborted();
 								if (!enabled()) return disabled;
-								if (
-									resource.close ||
-									resources.get(service.id)?.client !== client
-								)
-									return {
-										status: "failed",
-										result:
-											"MCP service unavailable; explicitly start it again",
-									};
+								if (!available()) return unavailable;
 								// Supplying the discovered definition prevents the SDK's modern-header refresh/replay path.
 								const result = await client.callTool(
 									{
@@ -393,10 +387,23 @@ export async function connectMcp(
 		await Promise.all(
 			services
 				.filter((service) => service.enabled)
-				.map((service) => startup(service.id, service)),
+				.map((service) => startup(service)),
 		);
 	return {
-		startup: (serviceId: string) => startup(serviceId),
+		startup: (reviewed: McpService) => {
+			const current = readServices().find(
+				(service) => service.id === reviewed.id,
+			);
+			if (!current?.enabled)
+				throw new Error(
+					"MCP service disabled or deleted; startup was not executed",
+				);
+			if (JSON.stringify(current) !== JSON.stringify(reviewed))
+				throw new Error(
+					"MCP service Settings changed during review; request mcp_startup again to review the latest configuration. Existing client was not replaced",
+				);
+			return startup(current);
+		},
 		tools: () =>
 			[...tools.values()].filter((tool) =>
 				readServices().some(

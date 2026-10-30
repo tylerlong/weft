@@ -652,3 +652,120 @@ for (const action of [
 		}
 	});
 }
+
+for (const change of ["selected", "unrelated"] as const) {
+	test(`startup binds the reviewed service snapshot when ${change} Settings change`, async () => {
+		const peer = await httpMcpFixture();
+		const service = {
+			id: "selected",
+			name: "snapshot service",
+			enabled: true,
+			config: JSON.stringify({ url: peer.url }),
+			env: [],
+		};
+		let round = 0;
+		const f = await fixture(
+			(request) => {
+				round++;
+				if (round === 1)
+					return [call("mcp_startup", { service_id: service.id })];
+				if (round === 2) {
+					if (change === "selected")
+						assert.match(
+							JSON.stringify(request.input),
+							/Settings changed during review/,
+						);
+					const tool = request.tools.find((tool) =>
+						tool.description?.includes("controlled HTTP tool"),
+					);
+					assert(tool);
+					return [
+						call(
+							tool.name,
+							{ mode: "mixed", payload: { still_usable: true } },
+							"business",
+						),
+					];
+				}
+				assert.match(JSON.stringify(request.input), /HTTP result/);
+				return [answer];
+			},
+			async () => {
+				if (f.reviews.length !== 1) return;
+				await f.send(
+					"/api/mcp-settings",
+					{
+						services:
+							change === "selected"
+								? [
+										{
+											...service,
+											config: JSON.stringify({ url: `${peer.url}/changed` }),
+										},
+									]
+								: [service, { ...service, id: "unrelated", enabled: false }],
+					},
+					"PUT",
+				);
+			},
+		);
+		try {
+			await f.send("/api/mcp-settings", { services: [service] }, "PUT");
+			assert.equal((await f.run()).status, "succeeded");
+			assert.equal(
+				peer.requests.filter((row) => row.method === "initialize").length,
+				change === "selected" ? 1 : 2,
+			);
+			assert.equal(
+				peer.requests.filter((row) => row.method === "tools/call").length,
+				1,
+			);
+			assert.equal(
+				peer.requests.filter((row) => row.method === "DELETE").length,
+				change === "selected" ? 1 : 2,
+			);
+		} finally {
+			await f.close();
+			await peer.close();
+		}
+	});
+}
+
+test("startup review sees meaningful unexpanded stdio launch arguments and credential references", async () => {
+	let round = 0;
+	const f = await fixture(() =>
+		++round === 1
+			? [call("mcp_startup", { service_id: "stdio-start" })]
+			: [answer],
+	);
+	try {
+		const script = fileURLToPath(
+			new URL("./mcp-stdio-fixture.ts", import.meta.url),
+		);
+		const logPath = join(f.directory, "mcp-startup.jsonl");
+		const service = {
+			id: "stdio-start",
+			name: "reviewed stdio startup",
+			enabled: true,
+			config: JSON.stringify({
+				command: process.execPath,
+				args: [script, logPath, "<LABEL>"],
+				startup_timeout_sec: 2,
+			}),
+			env: [{ name: "LABEL", value: "private-label-value" }],
+		};
+		await f.send("/api/mcp-settings", { services: [service] }, "PUT");
+		assert.equal((await f.run()).status, "succeeded");
+		assert.equal(f.reviews.length, 1);
+		const execution = f.reviews[0].execution as {
+			launch: { command: string; args: string[] };
+		};
+		assert.equal(execution.launch.command, process.execPath);
+		assert(execution.launch.args[0].endsWith("/mcp-stdio-fixture.ts"));
+		assert.equal(execution.launch.args[1], logPath);
+		assert.equal(execution.launch.args[2], "<LABEL>");
+		assert(!JSON.stringify(f.reviews[0]).includes("private-label-value"));
+	} finally {
+		await f.close();
+	}
+});
