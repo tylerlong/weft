@@ -608,6 +608,14 @@ for (const action of [
 				action === "disabled" || action === "budget" ? 0 : 1,
 			);
 			if (f.reviews.length) {
+				assert.equal(
+					(
+						f.reviews[0].execution as {
+							service: { runtime: { status: string } };
+						}
+					).service.runtime.status,
+					"connected",
+				);
 				assert.match(JSON.stringify(f.reviews[0].execution), /Authorization/);
 				assert.match(JSON.stringify(f.reviews[0].execution), /TOKEN/);
 				assert(

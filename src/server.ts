@@ -1208,7 +1208,13 @@ export function createServer(
 								description: mcpStartupTool.description,
 								arguments: value,
 								execution: {
-									service: mcpDiagnostics([service], [], redactTool)[0],
+									service: mcpDiagnostics(
+										[service],
+										JSON.parse(
+											safeMcpConnections(mcp?.connections ?? [], true),
+										),
+										redactTool,
+									)[0],
 
 									effect:
 										"Replace only this Agent's MCP client and catalog, then initialize and discover all tools using the reviewed saved Settings. Launches the user-configured executable with opaque user-owned arguments (which may contain arbitrary shell/script code and credentials), or contacts its HTTP endpoint using local credentials. The configured program has the current system user's full access; Weft does not sandbox its own startup effects. For recognized supported Jira Docker configuration, deterministic preparation may start an existing stopped Colima profile and check Docker readiness, but never creates profiles, switches context, installs software or restarts a running VM. No business calls are replayed.",
