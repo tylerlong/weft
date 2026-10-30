@@ -105,8 +105,10 @@ test("user and native tool images preserve exact protocol, record ownership and 
 		await rm(imagePath);
 		const db = new DatabaseSync(path);
 		const record = db
-			.prepare("SELECT result FROM tool_calls WHERE call_id='image-call'")
-			.get();
+			.prepare(
+				"SELECT result FROM tool_calls WHERE model_call_id IN (SELECT id FROM model_calls WHERE agent_id=?)",
+			)
+			.get(agentId);
 		assert.deepEqual(JSON.parse(String(record?.result)), [image]);
 		const firstRequest = db
 			.prepare(

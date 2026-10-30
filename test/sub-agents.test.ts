@@ -1991,7 +1991,10 @@ for (const maskKeys of [false, true]) {
 		try {
 			const service = jiraMcpService();
 			service.enabled = false;
-			service.env.push({ name: "ESCAPED_SECRET", value: secret });
+			service.env.push(
+				{ name: "ESCAPED_SECRET", value: secret },
+				{ name: "PATH_SECRET", value: "jira" },
+			);
 			if (maskKeys)
 				service.env.push(
 					...["prompt", "model_id", "high"].map((value, index) => ({
@@ -2297,6 +2300,7 @@ test("Root submission masks configured env values without changing active execut
 		service.enabled = false;
 		service.env.push(
 			{ name: "ESCAPED", value: secret },
+			{ name: "PATH_SECRET", value: "jira" },
 			{ name: "PIXEL", value: "iVBOR" },
 		);
 		assert.equal(
