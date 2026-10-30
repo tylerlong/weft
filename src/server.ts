@@ -898,7 +898,10 @@ export function createServer(
 					),
 				preserveKeys,
 			);
-		const safeMcpConnections = (connections: McpConnection[]) =>
+		const safeMcpConnections = (
+			connections: McpConnection[],
+			preserveIds = false,
+		) =>
 			JSON.stringify(
 				connections.map((connection) => {
 					let stderr = connection.stderr;
@@ -911,7 +914,7 @@ export function createServer(
 						if (hold) stderr = stderr.slice(0, -hold);
 					}
 					return {
-						id: redactTool(connection.id),
+						id: preserveIds ? connection.id : redactTool(connection.id),
 						name: redactTool(connection.name),
 						status: connection.status,
 						...(connection.error === undefined
@@ -1128,22 +1131,21 @@ export function createServer(
 							const services = readMcpServices();
 							for (const secret of mcpSecrets(services)) rememberKey(secret);
 							const diagnostics = mcpDiagnostics(
-								services,
-								JSON.parse(safeMcpConnections(mcp?.connections ?? [])),
+								value.service_id === undefined
+									? services
+									: services.filter(
+											(service) => service.id === value.service_id,
+										),
+								JSON.parse(safeMcpConnections(mcp?.connections ?? [], true)),
 								redactTool,
 							);
-							const selected =
-								value.service_id === undefined
-									? diagnostics
-									: diagnostics.filter(
-											(service) => service.id === redactTool(value.service_id),
-										);
+
 							return {
 								status: "succeeded",
 								result: JSON.stringify({
 									services:
-										selected.length || value.service_id === undefined
-											? selected
+										diagnostics.length || value.service_id === undefined
+											? diagnostics
 											: [
 													{
 														id: redactTool(value.service_id),

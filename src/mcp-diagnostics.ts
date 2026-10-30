@@ -19,10 +19,15 @@ export function mcpSecrets(services: McpService[]): string[] {
 		return [
 			...service.env.map(({ value }) => value),
 			...("url" in config
-				? Object.values(config.http_headers).flatMap((value) => [
-						value,
-						value.replace(/^\S+\s+/, ""),
-					])
+				? [
+						...Object.values(config.http_headers).flatMap((value) => [
+							value,
+							value.replace(/^\S+\s+/, ""),
+						]),
+						...new URLSearchParams(
+							config.url.split("?", 2)[1]?.split("#", 1)[0],
+						).values(),
+					]
 				: []),
 		].filter(Boolean);
 	});
@@ -46,7 +51,9 @@ export function mcpDiagnostics(
 			launch:
 				"url" in config
 					? {
-							url: redact(config.url.split(/[?#]/, 1)[0]),
+							url: redact(
+								config.url.replace(/(\/\/)[^/?#]*@/, "$1").split(/[?#]/, 1)[0],
+							),
 							headers: Object.keys(config.http_headers).map(redact),
 						}
 					: {

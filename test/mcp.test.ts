@@ -180,7 +180,7 @@ test("supported diagnostics distinguish saved configuration from this Agent runt
 		assert.equal(diagnostics.services.length, 5);
 		const byId = (id: string) =>
 			diagnostics.services.find((service: { id: string }) => service.id === id);
-		assert.equal(byId("healthy").runtime.status, "connected");
+		assert.equal(byId("[REDACTED]").runtime.status, "connected");
 		assert.equal(byId("disabled").enabled, false);
 		assert.equal(byId("disabled").runtime.status, "not_started");
 		assert.equal(byId("failed").enabled, true);
@@ -188,14 +188,16 @@ test("supported diagnostics distinguish saved configuration from this Agent runt
 		assert.match(byId("failed").runtime.error, /ENOENT/);
 		assert.equal(byId("newly-added").runtime.status, "not_started");
 		assert.equal(byId("http").transport, "streamable_http");
-		assert.equal(byId("http").launch.url, "https://example.invalid/mcp");
+		assert.equal(byId("http").launch.url, "https://example.invalid/mcp/<PATH>");
 		assert.deepEqual(byId("http").launch.headers, ["Authorization"]);
-		assert.deepEqual(byId("healthy").environment, [
+		assert.deepEqual(byId("[REDACTED]").environment, [
 			{ name: "WEFT_MCP_FIXTURE_VALUE", configured: true },
+			{ name: "ID_FRAGMENT", configured: true },
 		]);
 		assert(!String(result.output).includes("controlled-value"));
 		assert(!String(result.output).includes("literal-auth-secret"));
 		assert(!String(result.output).includes("query-auth-secret"));
+		assert(!String(result.output).includes("userinfo-auth-secret"));
 		return [answer];
 	});
 	const failed = f.service("failed");
@@ -203,14 +205,20 @@ test("supported diagnostics distinguish saved configuration from this Agent runt
 		command: join(tmpdir(), "weft-diagnostics-missing"),
 	});
 	const services = [
-		f.service("healthy"),
+		{
+			...f.service("healthy"),
+			env: [
+				...f.service("healthy").env,
+				{ name: "ID_FRAGMENT", value: "healthy" },
+			],
+		},
 		{ ...f.service("disabled"), enabled: false },
 		failed,
 		{
 			...f.service("http"),
 			enabled: false,
 			config: JSON.stringify({
-				url: "https://example.invalid/mcp?token=query-auth-secret",
+				url: "https://user:userinfo-auth-secret@example.invalid/mcp/<PATH>?token=query-auth-secret",
 				http_headers: { Authorization: "Bearer literal-auth-secret" },
 			}),
 		},
@@ -1002,7 +1010,7 @@ for (const auth of ["none", "auth", "key"]) {
 			);
 			const id = await f.start();
 			assert.equal((await waitForAgent(f.base, id)).status, "succeeded");
-			assert.equal(requests, 4);
+			assert.equal(requests, 2);
 			const calls = peer.requests.filter(
 				(item) => item.method === "tools/call",
 			);
