@@ -42,7 +42,7 @@ export function mcpDiagnostics(
 		const config = parseMcpConfig(service.config);
 		const runtime = connections.find((entry) => entry.id === service.id);
 		return {
-			id: redact(service.id),
+			id: service.id,
 			name: redact(service.name),
 			configured: true,
 			enabled: service.enabled,

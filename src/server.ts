@@ -1148,7 +1148,7 @@ export function createServer(
 											? diagnostics
 											: [
 													{
-														id: redactTool(value.service_id),
+														id: value.service_id,
 														configured: false,
 													},
 												],

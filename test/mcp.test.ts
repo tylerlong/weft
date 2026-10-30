@@ -172,15 +172,21 @@ test("supported diagnostics distinguish saved configuration from this Agent runt
 				},
 			];
 		}
-		const result = request.input.find(
-			(item) => item.type === "function_call_output",
-		);
+		const result = request.input
+			.filter((item) => item.type === "function_call_output")
+			.at(-1);
 		assert(result);
 		const diagnostics = JSON.parse(String(result.output));
+		if (requests === 3) {
+			assert.equal(diagnostics.services.length, 1);
+			assert.equal(diagnostics.services[0].id, "healthy");
+			assert.equal(diagnostics.services[0].runtime.status, "connected");
+			return [answer];
+		}
 		assert.equal(diagnostics.services.length, 5);
 		const byId = (id: string) =>
 			diagnostics.services.find((service: { id: string }) => service.id === id);
-		assert.equal(byId("[REDACTED]").runtime.status, "connected");
+		assert.equal(byId("healthy").runtime.status, "connected");
 		assert.equal(byId("disabled").enabled, false);
 		assert.equal(byId("disabled").runtime.status, "not_started");
 		assert.equal(byId("failed").enabled, true);
@@ -190,7 +196,7 @@ test("supported diagnostics distinguish saved configuration from this Agent runt
 		assert.equal(byId("http").transport, "streamable_http");
 		assert.equal(byId("http").launch.url, "https://example.invalid/mcp/<PATH>");
 		assert.deepEqual(byId("http").launch.headers, ["Authorization"]);
-		assert.deepEqual(byId("[REDACTED]").environment, [
+		assert.deepEqual(byId("healthy").environment, [
 			{ name: "WEFT_MCP_FIXTURE_VALUE", configured: true },
 			{ name: "ID_FRAGMENT", configured: true },
 		]);
@@ -198,7 +204,14 @@ test("supported diagnostics distinguish saved configuration from this Agent runt
 		assert(!String(result.output).includes("literal-auth-secret"));
 		assert(!String(result.output).includes("query-auth-secret"));
 		assert(!String(result.output).includes("userinfo-auth-secret"));
-		return [answer];
+		return [
+			{
+				type: "function_call",
+				name: "mcp_diagnostics",
+				call_id: "select-stable-id",
+				arguments: JSON.stringify({ service_id: byId("healthy").id }),
+			},
+		];
 	});
 	const failed = f.service("failed");
 	failed.config = JSON.stringify({
@@ -229,7 +242,7 @@ test("supported diagnostics distinguish saved configuration from this Agent runt
 			(await waitForAgent(f.base, await f.start())).status,
 			"succeeded",
 		);
-		assert.equal(requests, 2);
+		assert.equal(requests, 3);
 	} finally {
 		await f.close();
 	}
