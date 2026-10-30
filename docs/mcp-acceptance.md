@@ -35,7 +35,7 @@ pnpm exec tsc --ignoreConfig --noEmit --target es2022 --module nodenext --allowI
 3. 仅在隔离服务的首次启动中注入明确的受控错误。再次启动透明运行原 Jira MCP 命令，原凭据只沿本地配置／环境传给该程序；wrapper 不是受支持 Docker 启动形状，不触发真实 Colima 前置恢复。
 4. 真实模型被明确要求依次使用 `mcp_diagnostics`、`mcp_startup`、实际发现的 `jira_search`，只读查询 `assignee = currentUser() AND updated >= -24h`，最多五项。这个 prompt 验证指定序列的可用性，不证明模型在无提示时能自主诊断。
 5. 模型仍收到完整真实工具目录。仅验收 fetch seam 在交还真实响应前检查函数请求，任何非诊断／启动／实际 `jira_search` 请求均中止整个响应，不执行其操作；不会重写响应、伪造 Tool Call／Tool Result、代模型选调用或模拟成功。此保护与流缓冲仅用于防止验收写入，不是生产工具过滤或 Jev 分类规则。
-6. 输出仅含模型、Jev 开关、实际 Tool Call 名称／状态、Model Call 次数及服务方返回的 usage／cost（若有）。不打印 token、配置原文、Jira 票据内容或模型通信正文。结束后清理隔离服务器、所属 MCP 进程和临时数据库／配置；不停止共享 Docker／Colima。
+6. 输出仅含模型、Jev 开关、实际 Tool Call 名称／状态、Model Call 次数及服务方返回的 usage／cost（若有）。不打印 token、配置原文、Jira 票据内容或模型通信正文。成功、失败、超时以及正常 SIGINT／SIGTERM 均输出脱敏结果摘要；中断时的工具状态是清理前快照，不冒充终态。随后清理隔离服务器、所属 MCP 进程和临时数据库／配置；不停止共享 Docker／Colima。无法捕获的 SIGKILL／进程崩溃仍可能留下权限受限临时文件，不保证这类强制终止后的自动清理。
 
 成功必须观察到同一 Agent 的诊断包含受控首次错误、显式启动成功、随后真实 Jira search Tool Call 成功。Agent 文本自称完成不够，初始正常启动也不算故障恢复。真实 Jira 身份验证／搜索与受控首次故障须分开报告，不能声称验证了真实 Colima 停机恢复、外部 HTTP 服务或 Jev 的一般分类质量。
 

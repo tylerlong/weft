@@ -17,16 +17,36 @@ import { createServer } from "../src/server.ts";
 type Tool = { name: string; description?: string };
 const script = fileURLToPath(import.meta.url);
 
-function completed(text: string) {
-	if (!text.trimStart().startsWith("data:") && !text.includes("\ndata:"))
-		return JSON.parse(text);
-	for (const line of text.split(/\r?\n/)) {
-		if (!line.startsWith("data:") || line.slice(5).trim() === "[DONE]")
-			continue;
-		const event = JSON.parse(line.slice(5));
-		if (event.type === "response.completed") return event.response;
+function completed(
+	text: string,
+	observe: (response: Record<string, unknown>) => void = () => {},
+) {
+	if (!text.trimStart().startsWith("data:") && !text.includes("\ndata:")) {
+		const result = JSON.parse(text);
+		observe(result);
+		return result;
 	}
-	throw new Error("Acceptance requires a complete provider response");
+	let response: Record<string, unknown> | undefined;
+	for (const frame of text.split(/\r?\n\r?\n/)) {
+		const data = frame
+			.split(/\r?\n/)
+			.filter((line) => line.startsWith("data:"))
+			.map((line) => line.slice(5).replace(/^ /, ""))
+			.join("\n");
+		if (!data || data === "[DONE]") continue;
+		const event = JSON.parse(data);
+		if (event.type === "response.completed") {
+			observe(event.response);
+			assert.equal(
+				response,
+				undefined,
+				"Acceptance rejects multiple completion events",
+			);
+			response = event.response;
+		}
+	}
+	assert(response, "Acceptance requires a complete provider response");
+	return response;
 }
 
 function checkCalls(
@@ -79,12 +99,33 @@ async function service(file: string) {
 	child.on("error", () => {
 		process.exitCode = 1;
 	});
-	const [code] = await once(child, "close");
+	const [code] = await once(child, "close").catch(() => [1]);
 	clearTimeout(timer);
 	process.exitCode = code ?? 1;
 }
 
+function cliSignal() {
+	const controller = new AbortController();
+	const stop = () => controller.abort(new Error("Acceptance interrupted"));
+	process.on("SIGINT", stop);
+	process.on("SIGTERM", stop);
+	return {
+		signal: controller.signal,
+		dispose: () => {
+			process.off("SIGINT", stop);
+			process.off("SIGTERM", stop);
+		},
+	};
+}
+
 async function selfCheck() {
+	const interruption = cliSignal();
+	try {
+		process.emit("SIGTERM");
+		assert(interruption.signal.aborted);
+	} finally {
+		interruption.dispose();
+	}
 	const tools = [
 		{ name: "mcp_tool_7", description: "[MCP Jira: jira_search] Search" },
 	];
@@ -116,6 +157,26 @@ async function selfCheck() {
 		),
 	);
 	assert.throws(() => completed('data: {"type":"response.created"}\n'));
+	assert.throws(() =>
+		completed(
+			`data: ${JSON.stringify({ type: "response.completed", response })}\n\ndata: ${JSON.stringify({ type: "response.completed", response: { output: [{ type: "function_call", name: "jira_update_issue" }] } })}\n\n`,
+		),
+	);
+	const paidUsage: unknown[] = [];
+	assert.throws(() =>
+		checkCalls(
+			completed(
+				JSON.stringify({
+					output: [{ type: "function_call", name: "jira_update_issue" }],
+					usage: { cost: 0.01 },
+				}),
+				(value) => paidUsage.push(value.usage),
+			),
+			tools,
+			"Jira",
+		),
+	);
+	assert.deepEqual(paidUsage, [{ cost: 0.01 }]);
 	const directory = await mkdtemp(join(tmpdir(), "weft-accept-check-"));
 	try {
 		const file = join(directory, "service.json");
@@ -146,7 +207,7 @@ async function selfCheck() {
 	);
 }
 
-async function accept() {
+async function accept(interruption: AbortSignal) {
 	assert.equal(
 		process.env.WEFT_ACCEPT_PAID,
 		"1",
@@ -166,7 +227,7 @@ async function accept() {
 	const get = async (route: string) => {
 		const response = await fetch(new URL(route, source), {
 			headers: { "x-weft-management-token": sourceToken },
-			signal: AbortSignal.timeout(10000),
+			signal: AbortSignal.any([interruption, AbortSignal.timeout(10000)]),
 		});
 		assert(response.ok, `Source GET ${route} failed: ${response.status}`);
 		return response.json();
@@ -222,11 +283,20 @@ async function accept() {
 				),
 			},
 			timeout: 10000,
+			killSignal: "SIGKILL",
 			stdio: "pipe",
 		},
 	);
 	const directory = await mkdtemp(join(tmpdir(), "weft-accept-mcp-"));
 	let ownedServer: ReturnType<typeof createServer> | undefined;
+	const usage: unknown[] = [];
+	let modelCalls = 0;
+	let outcome = "failed";
+	let sequence: { name: string; status: string }[] = [];
+	let readSequence:
+		| (() => Promise<{ name: string; status: string }[]>)
+		| undefined;
+	const deadline = AbortSignal.any([interruption, AbortSignal.timeout(240000)]);
 	try {
 		const databasePath = join(directory, "acceptance.sqlite");
 		const file = join(directory, "service.json");
@@ -246,12 +316,10 @@ async function accept() {
 				Number(safety.safetyReview),
 			);
 		database.close();
-		const usage: unknown[] = [];
-		let modelCalls = 0;
-		const deadline = AbortSignal.timeout(240000);
 		const server = createServer(
 			async (url, init) => {
-				assert(++modelCalls <= 16, "Acceptance Model Call bound exceeded");
+				assert(modelCalls < 16, "Acceptance Model Call bound exceeded");
+				modelCalls++;
 				const request = JSON.parse(String(init?.body));
 				const response = await fetch(url, {
 					...init,
@@ -262,9 +330,10 @@ async function accept() {
 				});
 				const text = await response.text();
 				if (response.ok) {
-					const result = completed(text);
+					const result = completed(text, (value) =>
+						usage.push({ model: value.model, usage: value.usage }),
+					);
 					if (request.tools) checkCalls(result, request.tools, selected.name);
-					usage.push({ model: result.model, usage: result.usage });
 				}
 				return new Response(text, {
 					status: response.status,
@@ -272,7 +341,7 @@ async function accept() {
 				});
 			},
 			databasePath,
-			fetch,
+			(url, init) => fetch(url, { ...init, signal: deadline }),
 			undefined,
 			undefined,
 			join(directory, "no-user-config"),
@@ -324,34 +393,33 @@ async function accept() {
 			prompt:
 				"Perform this bounded read-only acceptance exercise. First call mcp_diagnostics to inspect this Agent's MCP runtime. The configured Jira service initially failed in an isolated controlled launch wrapper; use mcp_startup with its stable service_id to recover in this SAME Agent. Then explicitly call the discovered jira_search to list up to 5 tickets assigned to currentUser() updated in the past 24 hours, returning keys and summaries. Do not call any other tools, create sub-agents, access files/databases, modify Settings, run commands, write to Jira, or start/restart infrastructure. Stop and accurately report any unresolved failure; do not invent success. This is an explicitly requested diagnostics/startup/search sequence for acceptance, not an autonomous discovery test.",
 		});
+		readSequence = async () => {
+			const response = await fetch(
+				`http://127.0.0.1:${address.port}/api/agents/${accepted.agentId}/tools`,
+				{
+					headers: { "x-weft-management-token": server.managementToken },
+					signal: AbortSignal.timeout(1000),
+				},
+			);
+			assert(response.ok);
+			return (await response.json()).toolCalls.map(
+				(item: { name: string; status: string }) => ({
+					name: item.name,
+					status: item.status,
+				}),
+			);
+		};
 		let state = await send(`/api/agents/${accepted.agentId}`);
 		while (state.agentBusy || state.busy) {
 			await delay(100, undefined, { signal: deadline });
 			state = await send(`/api/agents/${accepted.agentId}`);
 		}
 		const { toolCalls } = await send(`/api/agents/${accepted.agentId}/tools`);
-		const sequence = toolCalls.map(
-			(item: { name: string; status: string }) => ({
-				name: item.name,
-				status: item.status,
-			}),
-		);
-		console.log(
-			JSON.stringify(
-				{
-					model: model.id,
-					safetyReview: safety.safetyReview,
-					modelCalls,
-					usage,
-					status: state.agents[0].status,
-					sequence,
-					controlledFailure: true,
-					realPrerequisiteRecovery: false,
-				},
-				null,
-				2,
-			),
-		);
+		sequence = toolCalls.map((item: { name: string; status: string }) => ({
+			name: item.name,
+			status: item.status,
+		}));
+
 		assert.equal(state.agents[0].status, "succeeded", "Agent did not complete");
 		assert.equal(sequence[0]?.name, "mcp_diagnostics");
 		assert(
@@ -374,7 +442,26 @@ async function accept() {
 			),
 			"No successful Jira search observed",
 		);
+		outcome = "succeeded";
 	} finally {
+		if (readSequence) sequence = await readSequence().catch(() => sequence);
+		console.log(
+			JSON.stringify(
+				{
+					model: model.id,
+					safetyReview: safety.safetyReview,
+					modelCalls,
+					usage,
+					outcome,
+					sequence,
+					sequenceSnapshotBeforeCleanup: true,
+					controlledFailure: true,
+					realPrerequisiteRecovery: false,
+				},
+				null,
+				2,
+			),
+		);
 		if (ownedServer) {
 			const server = ownedServer;
 			server.closeAllConnections();
@@ -387,12 +474,15 @@ async function accept() {
 if (process.argv[2] === "--service") await service(process.argv[3]);
 else if (process.argv[2] === "--check") await selfCheck();
 else {
+	const interruption = cliSignal();
 	try {
-		await accept();
+		await accept(interruption.signal);
 	} catch {
 		console.error(
 			"MCP acceptance failed. No credentials or Jira content are printed. Inspect the controlled invocation and source availability; no success is claimed.",
 		);
 		process.exitCode = 1;
+	} finally {
+		interruption.dispose();
 	}
 }
