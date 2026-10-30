@@ -8,6 +8,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import type { ToolExecution, ToolReview } from "./file-tools.ts";
 import { type InputContent, submittedImages } from "./image-content.ts";
 import { type McpService, parseMcpConfig } from "./mcp-config.ts";
+import { prepareMcp } from "./mcp-prerequisites.ts";
 import { ModelError } from "./openrouter.ts";
 
 export type McpConnection = {
@@ -155,6 +156,15 @@ export async function connectMcp(
 			};
 			startupSignal.addEventListener("abort", abortStartup, { once: true });
 			try {
+				startupSignal.throwIfAborted();
+				if (!readServices().some((row) => row.id === serviceId && row.enabled))
+					throw new Error(
+						"MCP service disabled or deleted; startup was not executed",
+					);
+				await prepareMcp(config, service.env, startupSignal, (text) => {
+					connection.stderr = (connection.stderr ?? "") + text;
+					update();
+				});
 				startupSignal.throwIfAborted();
 				if (!readServices().some((row) => row.id === serviceId && row.enabled))
 					throw new Error(

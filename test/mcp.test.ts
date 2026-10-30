@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+	chmod,
+	mkdir,
+	mkdtemp,
+	readFile,
+	rm,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { setTimeout } from "node:timers/promises";
@@ -111,15 +118,17 @@ async function fixture(
 		}
 	};
 	return {
+		directory,
 		base,
 		path,
+		projectId: project.id,
 		service,
 		logs,
 		send,
 		settings: (services: ReturnType<typeof service>[]) =>
 			send("/api/mcp-settings", { services }, "PUT"),
-		start: async () =>
-			(await send(`/api/chats/${chat.id}`, { prompt: "use MCP" }))
+		start: async (chatId = chat.id) =>
+			(await send(`/api/chats/${chatId}`, { prompt: "use MCP" }))
 				.agentId as number,
 		close: async () => {
 			server.closeAllConnections();
@@ -143,6 +152,566 @@ const mcpTool = (request: Request, label: string) => {
 	assert(tool, `Missing discovered tool for ${label}`);
 	return tool;
 };
+
+async function dockerFixture(
+	f: Awaited<ReturnType<typeof fixture>>,
+	state = {},
+) {
+	const directory = join(f.directory, "runtime");
+	await mkdir(join(directory, "colima-home", "default"), { recursive: true });
+	await writeFile(
+		join(directory, "colima-home", "default", "colima.yaml"),
+		"runtime: docker\n",
+	);
+	const source = await readFile(
+		new URL("./mcp-prerequisite-fixture.ts", import.meta.url),
+		"utf8",
+	);
+	for (const name of ["docker", "colima"]) {
+		const path = join(directory, name);
+		await writeFile(path, `#!${process.execPath}\n${source}`);
+		await chmod(path, 0o755);
+	}
+	const statePath = join(directory, "state.json");
+	await writeFile(join(directory, "commands.jsonl"), "");
+	const save = (updates: Record<string, unknown>) =>
+		writeFile(
+			statePath,
+			JSON.stringify({
+				ready: false,
+				status: "Stopped",
+				runtime: "docker",
+				...state,
+				...updates,
+			}),
+		);
+	await save({});
+	const service = f.service("jira-runtime", "editable display name");
+	service.config = JSON.stringify({
+		command: join(directory, "docker"),
+		args: [
+			"run",
+			"-i",
+			"--rm",
+			"-e",
+			"JIRA_URL",
+			"ghcr.io/sooperset/mcp-atlassian:latest",
+		],
+		startup_timeout_sec: 5,
+	});
+	service.env = Object.entries({
+		HOME: directory,
+		COLIMA_HOME: join(directory, "colima-home"),
+		PATH: `${directory}:${dirname(process.execPath)}`,
+		WEFT_MCP_PREREQ_DIRECTORY: directory,
+		WEFT_MCP_FIXTURE: fileURLToPath(
+			new URL("./mcp-stdio-fixture.ts", import.meta.url),
+		),
+		WEFT_MCP_LOG: join(f.directory, "service.jsonl"),
+	}).map(([name, value]) => ({ name, value }));
+	return {
+		service,
+		directory,
+		save,
+		logs: async () =>
+			(await readFile(join(directory, "commands.jsonl"), "utf8"))
+				.trim()
+				.split("\n")
+				.filter(Boolean)
+				.map((line) => JSON.parse(line)),
+	};
+}
+
+test("supported Jira startup prepares an existing stopped Colima profile before discovery", async () => {
+	let requests = 0;
+	const f = await fixture((request) => {
+		requests++;
+		if (requests === 1) return [call(mcpTool(request, "jira"), "jira-read")];
+		return [answer];
+	});
+	try {
+		const runtime = await dockerFixture(f);
+		await f.settings([runtime.service]);
+		const agent = await waitForAgent(f.base, await f.start());
+		assert.equal(agent.status, "succeeded");
+		const commands = await runtime.logs();
+		assert.deepEqual(
+			commands
+				.filter((row) => row.command === "colima" && row.args[0] === "start")
+				.map((row) => row.args),
+			[
+				[
+					"start",
+					"default",
+					"--activate=false",
+					"--save-config=false",
+					"--ssh-config=false",
+				],
+			],
+		);
+		assert.equal(
+			(await f.logs()).filter((row) => row.event === "tools/call").length,
+			1,
+		);
+	} finally {
+		await f.close();
+	}
+});
+
+test("ready Jira Docker skips Colima and unsupported Docker launches keep their normal protocol path", async () => {
+	for (const supported of [true, false]) {
+		const f = await fixture((request) => {
+			mcpTool(request, "jira");
+			return [answer];
+		});
+		try {
+			const runtime = await dockerFixture(f, { ready: true });
+			if (!supported) {
+				const config = JSON.parse(runtime.service.config);
+				config.args[config.args.length - 1] = "unrelated/image";
+				runtime.service.config = JSON.stringify(config);
+			}
+			await f.settings([runtime.service]);
+			assert.equal(
+				(await waitForAgent(f.base, await f.start())).status,
+				"succeeded",
+			);
+			const commands = await runtime.logs();
+			assert.equal(
+				commands.filter((row) => row.command === "colima").length,
+				0,
+			);
+			assert.equal(
+				commands.filter((row) => row.args.includes("info")).length,
+				supported ? 1 : 0,
+			);
+			assert.equal(
+				commands.filter((row) => row.args.includes("run")).length,
+				1,
+			);
+		} finally {
+			await f.close();
+		}
+	}
+});
+
+for (const scenario of [
+	{
+		state: { status: "Running" },
+		message: /status is Running; Docker is unreachable/,
+	},
+	{
+		state: { missingProfile: true },
+		message: /missing, ambiguous or not a Docker runtime/,
+	},
+	{
+		state: { duplicateProfile: true },
+		message: /missing, ambiguous or not a Docker runtime/,
+	},
+	{ state: { runtime: "containerd" }, message: /not a Docker runtime/ },
+	{
+		state: { endpoint: "unix:///unrelated/docker.sock" },
+		message: /not a supported Colima profile socket/,
+	},
+	{ state: { listMalformed: true }, message: /invalid JSON/ },
+	{ state: { startFailure: true }, message: /controlled Colima start failure/ },
+])
+	test(`Jira preparation reports ${JSON.stringify(scenario.state)} without unsafe runtime changes`, async () => {
+		const f = await fixture((request) => {
+			assert(
+				!request.tools.some((tool) =>
+					tool.description?.includes("jira: controlled"),
+				),
+			);
+			assert.match(request.instructions ?? "", scenario.message);
+			return [answer];
+		});
+		try {
+			const runtime = await dockerFixture(f, scenario.state);
+			await f.settings([runtime.service]);
+			assert.equal(
+				(await waitForAgent(f.base, await f.start())).status,
+				"succeeded",
+			);
+			const commands = await runtime.logs();
+			assert.equal(
+				commands.filter((row) => row.args.includes("run")).length,
+				0,
+			);
+			assert.equal(
+				commands.filter(
+					(row) => row.command === "colima" && row.args[0] === "start",
+				).length,
+				"startFailure" in scenario.state ? 1 : 0,
+			);
+			assert(
+				commands.every(
+					(row) =>
+						row.command !== "colima" || ["list", "start"].includes(row.args[0]),
+				),
+			);
+		} finally {
+			await f.close();
+		}
+	});
+
+test("missing Colima executable and profile configuration are returned without creating infrastructure", async () => {
+	for (const missing of ["colima", "configuration"]) {
+		const f = await fixture((request) => {
+			assert.match(
+				request.instructions ?? "",
+				missing === "colima" ? /ENOENT/ : /no existing configuration/,
+			);
+			return [answer];
+		});
+		try {
+			const runtime = await dockerFixture(f);
+			await rm(
+				join(
+					runtime.directory,
+					missing === "colima" ? "colima" : "colima-home/default/colima.yaml",
+				),
+			);
+			await f.settings([runtime.service]);
+			assert.equal(
+				(await waitForAgent(f.base, await f.start())).status,
+				"succeeded",
+			);
+			assert.equal(
+				(await runtime.logs()).filter((row) => row.command === "colima").length,
+				0,
+			);
+		} finally {
+			await f.close();
+		}
+	}
+});
+
+test("same-Agent Jira recovery performs compound preparation under one ordinary startup review", async () => {
+	for (const reviewed of [true, false]) {
+		let requests = 0;
+		let runtime!: Awaited<ReturnType<typeof dockerFixture>>;
+		const f = await fixture(async (request) => {
+			requests++;
+			if (requests === 1)
+				return [
+					{
+						type: "function_call",
+						name: "mcp_diagnostics",
+						call_id: "diagnose",
+						arguments: "{}",
+					},
+				];
+			if (requests === 2) {
+				assert.match(
+					JSON.stringify(request.input),
+					/Running; Docker is unreachable/,
+				);
+				await runtime.save({ status: "Stopped" });
+				return [
+					{
+						type: "function_call",
+						name: "mcp_startup",
+						call_id: "prepare",
+						arguments: JSON.stringify({ service_id: runtime.service.id }),
+					},
+				];
+			}
+			if (requests === 3)
+				return [call(mcpTool(request, "jira"), "read-after-start")];
+			return [answer];
+		});
+		try {
+			runtime = await dockerFixture(f, { status: "Running" });
+			await f.settings([runtime.service]);
+			if (!reviewed)
+				await f.send("/api/safety-review", { safetyReview: false }, "PATCH");
+			const id = await f.start();
+			assert.equal((await waitForAgent(f.base, id)).status, "succeeded");
+			assert.equal(
+				(await f.logs()).filter((row) => row.event === "tools/call").length,
+				1,
+			);
+			const db = new DatabaseSync(f.path, { readOnly: true });
+			try {
+				const reviews = db
+					.prepare(
+						"SELECT request_body FROM model_calls WHERE agent_id=? AND url LIKE '%/decisions'",
+					)
+					.all(id);
+				assert.equal(reviews.length, reviewed ? 3 : 0);
+				if (reviewed)
+					assert.match(
+						String(reviews[1].request_body),
+						/existing stopped Colima profile/,
+					);
+			} finally {
+				db.close();
+			}
+		} finally {
+			await f.close();
+		}
+	}
+});
+
+test("concurrent Agents share one bounded Colima start even when a waiting Agent cancels", async () => {
+	const f = await fixture((request) => {
+		mcpTool(request, "jira");
+		return [answer];
+	});
+	try {
+		const runtime = await dockerFixture(f, { startDelay: 1800 });
+		await f.settings([runtime.service]);
+		const first = await f.start();
+		await eventually(async () =>
+			(await runtime.logs()).some(
+				(row) => row.command === "colima" && row.args[0] === "start",
+			),
+		);
+		const chat = await f.send(`/api/projects/${f.projectId}/chats`, {
+			name: "waiting",
+		});
+		const second = await f.start(chat.id);
+		await eventually(
+			async () =>
+				(await runtime.logs()).filter((row) => row.args.includes("inspect"))
+					.length >= 2,
+		);
+		await f.send(`/api/agents/${second}/cancel`, {});
+		assert.equal((await waitForAgent(f.base, second)).status, "cancelled");
+		const thirdChat = await f.send(`/api/projects/${f.projectId}/chats`, {
+			name: "third",
+		});
+		const third = await f.start(thirdChat.id);
+		assert.equal((await waitForAgent(f.base, first)).status, "succeeded");
+		assert.equal((await waitForAgent(f.base, third)).status, "succeeded");
+		const commands = await runtime.logs();
+		assert.equal(
+			commands.filter(
+				(row) =>
+					row.command === "colima" &&
+					row.args[0] === "start" &&
+					row.event === "command",
+			).length,
+			1,
+		);
+		assert(
+			commands.every(
+				(row) =>
+					row.command !== "colima" || ["list", "start"].includes(row.args[0]),
+			),
+		);
+	} finally {
+		await f.close();
+	}
+});
+
+for (const stage of ["infoHang", "startHang", "unhealthy"])
+	test(`Jira startup timeout covers ${stage} and leaves shared infrastructure untouched`, async () => {
+		const f = await fixture((request) => {
+			assert.match(request.instructions ?? "", /startup timed out/);
+			assert(
+				!request.tools.some((tool) =>
+					tool.description?.includes("jira: controlled"),
+				),
+			);
+			if (stage !== "infoHang")
+				assert.match(
+					request.instructions ?? "",
+					/controlled Docker endpoint unreachable/,
+				);
+			return [answer];
+		});
+		try {
+			const runtime = await dockerFixture(f, {
+				[stage]: true,
+				ignoreTerm: stage === "startHang",
+				spawnChild: stage === "startHang",
+			});
+			const config = JSON.parse(runtime.service.config);
+			config.startup_timeout_sec = 1.5;
+			runtime.service.config = JSON.stringify(config);
+			await f.settings([runtime.service]);
+			const began = Date.now();
+			assert.equal(
+				(await waitForAgent(f.base, await f.start())).status,
+				"succeeded",
+			);
+			assert(Date.now() - began < 5000);
+			const commands = await runtime.logs();
+			if (stage !== "unhealthy") {
+				const killed = commands.find((row) => row.event === "terminated");
+				assert(killed);
+				assert.throws(() => process.kill(killed.pid, 0), { code: "ESRCH" });
+				if (stage === "startHang") {
+					const child = commands.find((row) => row.command === "owned-child");
+					assert(child);
+					assert.throws(() => process.kill(child.pid, 0), { code: "ESRCH" });
+				}
+			}
+			assert.equal(
+				commands.filter((row) => row.args.includes("run")).length,
+				0,
+			);
+			assert(
+				commands.every(
+					(row) =>
+						row.command !== "colima" || ["list", "start"].includes(row.args[0]),
+				),
+			);
+			if (stage !== "infoHang")
+				assert.equal(
+					JSON.parse(
+						await readFile(join(runtime.directory, "state.json"), "utf8"),
+					).status,
+					"Running",
+				);
+		} finally {
+			await f.close();
+		}
+	});
+
+test("cancelling a Colima startup owner releases waiting Agents without rolling back shared effects", async () => {
+	const f = await fixture((request) => {
+		assert.match(
+			request.instructions ?? "",
+			/status is Running; Docker is unreachable/,
+		);
+		return [answer];
+	});
+	try {
+		const runtime = await dockerFixture(f, {
+			startHang: true,
+			unhealthy: true,
+		});
+		await f.settings([runtime.service]);
+		const owner = await f.start();
+		await eventually(async () =>
+			(await runtime.logs()).some(
+				(row) => row.command === "colima" && row.args[0] === "start",
+			),
+		);
+		const chat = await f.send(`/api/projects/${f.projectId}/chats`, {
+			name: "waiting",
+		});
+		const waiter = await f.start(chat.id);
+		await eventually(
+			async () =>
+				(await runtime.logs()).filter((row) => row.args.includes("inspect"))
+					.length >= 2,
+		);
+		await f.send(`/api/agents/${owner}/cancel`, {});
+		assert.equal((await waitForAgent(f.base, owner)).status, "cancelled");
+		assert.equal((await waitForAgent(f.base, waiter)).status, "succeeded");
+		const commands = await runtime.logs();
+		assert.equal(
+			commands.filter(
+				(row) =>
+					row.command === "colima" &&
+					row.args[0] === "start" &&
+					row.event === "command",
+			).length,
+			1,
+		);
+		const killed = commands.find((row) => row.event === "terminated");
+		assert(killed);
+		assert.throws(() => process.kill(killed.pid, 0), { code: "ESRCH" });
+		assert.equal(
+			JSON.parse(await readFile(join(runtime.directory, "state.json"), "utf8"))
+				.status,
+			"Running",
+		);
+	} finally {
+		await f.close();
+	}
+});
+
+test("Jira Docker readiness honors configured endpoint selectors without switching context", async () => {
+	for (const selector of ["host-flag", "host-env", "context-env"]) {
+		const f = await fixture((request) => {
+			mcpTool(request, "jira");
+			return [answer];
+		});
+		try {
+			const runtime = await dockerFixture(f);
+			const endpoint = `unix://${runtime.directory}/colima-home/default/docker.sock`;
+			if (selector === "host-flag") {
+				const config = JSON.parse(runtime.service.config);
+				config.args.unshift("--host", endpoint);
+				runtime.service.config = JSON.stringify(config);
+			} else
+				runtime.service.env.push({
+					name: "DOCKER_HOST",
+					value:
+						selector === "host-env"
+							? endpoint
+							: "unix:///unrelated/docker.sock",
+				});
+			if (selector === "context-env")
+				runtime.service.env.push({
+					name: "DOCKER_CONTEXT",
+					value: "selected-context",
+				});
+			await f.settings([runtime.service]);
+			assert.equal(
+				(await waitForAgent(f.base, await f.start())).status,
+				"succeeded",
+			);
+			const commands = await runtime.logs();
+			const inspected = commands.filter((row) => row.args.includes("inspect"));
+			assert.equal(inspected.length, selector === "context-env" ? 1 : 0);
+			if (selector === "context-env")
+				assert(inspected[0].args.includes("selected-context"));
+			if (selector === "host-flag")
+				assert.deepEqual(
+					commands
+						.filter((row) => row.command === "docker")
+						.map((row) => row.args.slice(0, 2)),
+					Array(commands.filter((row) => row.command === "docker").length).fill(
+						["--host", endpoint],
+					),
+				);
+			assert(commands.every((row) => !row.args.includes("use")));
+		} finally {
+			await f.close();
+		}
+	}
+});
+
+test("disabling Jira during preparation prevents MCP launch and preserves an already-started shared runtime", async () => {
+	const f = await fixture((request) => {
+		assert.match(request.instructions ?? "", /disabled or deleted/);
+		assert(
+			!request.tools.some((tool) =>
+				tool.description?.includes("jira: controlled"),
+			),
+		);
+		return [answer];
+	});
+	try {
+		const runtime = await dockerFixture(f, { startDelay: 400 });
+		await f.settings([runtime.service]);
+		const id = await f.start();
+		await eventually(async () =>
+			(await runtime.logs()).some(
+				(row) => row.command === "colima" && row.args[0] === "start",
+			),
+		);
+		await f.settings([{ ...runtime.service, enabled: false }]);
+		assert.equal((await waitForAgent(f.base, id)).status, "succeeded");
+		assert.equal(
+			(await runtime.logs()).filter((row) => row.args.includes("run")).length,
+			0,
+		);
+		assert.equal(
+			JSON.parse(await readFile(join(runtime.directory, "state.json"), "utf8"))
+				.status,
+			"Running",
+		);
+	} finally {
+		await f.close();
+	}
+});
 
 test("supported diagnostics distinguish saved configuration from this Agent runtime without credentials", async () => {
 	let requests = 0;

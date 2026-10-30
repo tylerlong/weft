@@ -77,3 +77,13 @@ Jev 范围统一遵循 ADR 0004：开启时所有 Tool Call 在执行前审核�
 自动初始化与显式启动复用同一服务启动路径；服务 startup_timeout_sec 对初始化及全部发现共用一个总时限，Agent 取消会关闭所属客户端及 stdio 进程，HTTP 会话删除最多等待一秒再关闭本地流。取消不表示回滚已发生的外部效果。Settings 保存本身不启动协议或业务调用，禁用／删除仍在执行前（含 Jev 审核后）检查。显式启动作为一个 Tool Call 遵循全局 Jev 开关，Jev 接收完整的 `service_id` 工具参数、传输／程序、参数数量、环境变量引用及实际操作范围；任意已保存 argv 可能含字面凭据，因此不导出其内容。审核明确说明外部程序可能通过不透明参数执行任意 shell／脚本，拥有当前用户完整权限，不能据参数省略推断启动无风险；这是尽力而为的审核，仍不隔离可信外部程序的内部行为。审核期间该服务配置改变时拒绝本次启动并保留旧客户端，模型可再次请求以审核最新配置，其他服务的编辑不影响本次操作。内部协议步骤不再次审核，自动 Agent-start 设置不是 Tool Call。
 
 隔离的 stdio／HTTP 服务与模拟模型测试已覆盖失败后恢复、配置与凭据替换、分页失败不发布部分工具、旧身份失效、取消和启动时限。Docker／Colima 前置准备由 #216 交付；真实模型及 Jira 验收由 #217 单独执行，本节不证明这些部分已完成。
+
+## #216 已实现的 Jira Docker 前置准备
+
+自动 Agent-start 与显式 `mcp_startup` 共用本地准备：识别可执行文件名为 `docker`、实际 `run` 镜像为 `ghcr.io/sooperset/mcp-atlassian`（可带 tag／digest）的受支持参数形状，不依赖显示名称。当前识别全局 host／context／config 选择器和模板的 interactive／rm／env 参数；其他参数形状保留原 stdio 协议路径，不猜测其作用。使用与 MCP 进程一致的 SDK 默认环境加服务环境及全局选择器执行 `docker info`，直接验证所选 Docker daemon，成功就不查询或启动 Colima。
+
+Docker 不可达时，按 Docker 的 host／context 选择规则读取 endpoint。只有明确指向当前 `COLIMA_HOME`（默认 `$HOME/.colima`）下 `<profile>/docker.sock`、已有 `colima.yaml`，且 `colima list --json` 唯一确认该 profile 为 Docker runtime、状态 `Stopped` 时才启动。执行 `colima start <profile> --activate=false --save-config=false --ssh-config=false`，避免默认的 context 切换、配置保存和 SSH 配置改写；不移除保护参数来兼容旧 CLI，失败如实返回。未知 endpoint、缺少依赖／profile、其他 runtime、损坏输出，以及运行中的 VM 但 Docker 不可达均保持真实失败，不创建 profile、安装软件、切换 context 或重启 VM。
+
+准备、等待共享启动、子进程、Docker 就绪轮询、MCP 初始化及全部发现共用服务启动总时限与取消信号。相同本地 profile 的并发 Agent 串行确认启动；等待者取消不释放仍在执行的启动，执行者取消后等待者重新检查实际 daemon／profile 状态。取消终止所属准备进程组，必要时升级到强制终止，但不调用 `colima stop`／`delete`；已启动的共享 runtime 不是 Agent 资源，不回滚真实外部效果。启动请求与完成事实、实际 stderr 及失败进入原 MCP 运行诊断。只有 Docker 实际就绪后才进入发现，之后的业务 Tool Call 仍由模型显式选择。
+
+显式启动仍只接受一次普通 Jev 审核，已有说明涵盖可能启动停止的 Colima profile；内部确定性步骤不增加 Model Call，自动初始化不变成 Tool Call。受控可执行文件和临时服务器覆盖启动、失败、时限、取消、并发隔离、同一 Agent 恢复与审核计数；未操作用户真实 Docker／Colima，也未据此声称真实 Jira／付费模型验收通过，后者仍由 #217 单独执行。[Colima start 参数](https://github.com/abiosoft/colima/blob/main/cmd/start.go)、[list JSON](https://github.com/abiosoft/colima/blob/main/cmd/list.go) 和 [Docker endpoint 选择规则](https://docs.docker.com/reference/cli/docker/) 是上述 CLI 约定的依据。
