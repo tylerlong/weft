@@ -249,7 +249,7 @@ async function accept() {
 		const usage: unknown[] = [];
 		let modelCalls = 0;
 		const deadline = AbortSignal.timeout(240000);
-		const server = (ownedServer = createServer(
+		const server = createServer(
 			async (url, init) => {
 				assert(++modelCalls <= 16, "Acceptance Model Call bound exceeded");
 				const request = JSON.parse(String(init?.body));
@@ -276,7 +276,8 @@ async function accept() {
 			undefined,
 			undefined,
 			join(directory, "no-user-config"),
-		));
+		);
+		ownedServer = server;
 		server.listen(0, "127.0.0.1");
 		await once(server, "listening");
 		const address = server.address();
