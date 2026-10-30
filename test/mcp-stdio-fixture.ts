@@ -48,6 +48,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 			`${JSON.stringify({ jsonrpc: "2.0", id: request.id, result })}\n`,
 		);
 	if (request.method === "initialize") {
+		if (process.env.WEFT_MCP_DISCOVERY_MODE === "hang-initialize") return;
 		if (stderrSecret) process.stderr.write(Buffer.from("界").subarray(0, 2));
 		respond({
 			protocolVersion: request.params.protocolVersion,
@@ -55,6 +56,21 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 			serverInfo: { name: "controlled", version: "1" },
 		});
 	} else if (request.method === "tools/list") {
+		if (
+			request.params?.cursor &&
+			process.env.WEFT_MCP_DISCOVERY_MODE === "hang-second"
+		)
+			return;
+		if (
+			request.params?.cursor &&
+			process.env.WEFT_MCP_DISCOVERY_MODE === "fail-second"
+		) {
+			process.stdout.write(
+				`${JSON.stringify({ jsonrpc: "2.0", id: request.id, error: { code: -32603, message: "controlled second-page failure" } })}\n`,
+			);
+			return;
+		}
+
 		if (stderrSecret && !stderrPrefixWritten) {
 			stderrPrefixWritten = true;
 			process.stderr.write(

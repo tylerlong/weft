@@ -23,6 +23,23 @@ export type McpTool = {
 	description: string;
 	parameters: Record<string, unknown>;
 };
+export const mcpStartupTool: McpTool = {
+	type: "function",
+	name: "mcp_startup",
+	description:
+		"Start or reconnect one enabled MCP service for this Agent using latest saved Settings. Replaces this Agent's old tools/client before startup; failure leaves no old tools or credentials. Bounded initialization and complete discovery refresh the next model request. Does not replay business calls or change Settings. Known deterministic prerequisite preparation is part of this operation; it may start an existing stopped supported runtime, never restart running infrastructure, install software or change system configuration. Credentials remain local.",
+	parameters: {
+		type: "object",
+		properties: { service_id: { type: "string" } },
+		required: ["service_id"],
+		additionalProperties: false,
+	},
+};
+type McpClientResource = {
+	client: Client;
+	transport?: StreamableHTTPClientTransport;
+	close?: Promise<void>;
+};
 export async function connectMcp(
 	services: McpService[],
 	readServices: () => McpService[],
@@ -30,9 +47,8 @@ export async function connectMcp(
 	report: (connections: McpConnection[]) => void,
 ) {
 	const connections: McpConnection[] = [];
-	const clients: Client[] = [];
-	const httpTransports: StreamableHTTPClientTransport[] = [];
-	const tools: McpTool[] = [];
+	const resources = new Map<string, McpClientResource>();
+	const tools = new Map<string, McpTool>();
 	const owners = new Map<string, string>();
 	const handlers = new Map<
 		string,
@@ -42,25 +58,40 @@ export async function connectMcp(
 			review?: ToolReview,
 		) => Promise<ToolExecution>
 	>();
+	let sequence = 0;
 	let closing: Promise<void> | undefined;
 	const update = () => {
 		if (connections.length) report(connections);
 	};
-	const close = async () => {
+	const removeTools = (id: string) => {
+		for (const [name, owner] of owners)
+			if (owner === id) {
+				tools.delete(name);
+				handlers.delete(name);
+				owners.delete(name);
+			}
+	};
+	const closeResource = (resource: McpClientResource) => {
+		if (!resource.close)
+			resource.close = (async () => {
+				if (resource.transport) {
+					const transport = resource.transport;
+					const timeout = setTimeout(() => void transport.close(), 1000);
+					try {
+						await transport.terminateSession();
+					} catch {
+					} finally {
+						clearTimeout(timeout);
+					}
+				}
+				await resource.client.close();
+			})();
+		return resource.close;
+	};
+	const close = () => {
 		if (!closing)
 			closing = (async () => {
-				await Promise.allSettled(
-					httpTransports.map(async (transport) => {
-						// Bound remote session deletion so an unresponsive server cannot hold Agent cleanup.
-						const timeout = setTimeout(() => void transport.close(), 1000);
-						try {
-							await transport.terminateSession();
-						} finally {
-							clearTimeout(timeout);
-						}
-					}),
-				);
-				await Promise.allSettled(clients.map((client) => client.close()));
+				await Promise.allSettled([...resources.values()].map(closeResource));
 				for (const connection of connections)
 					if (connection.status !== "error") connection.status = "closed";
 				update();
@@ -71,230 +102,303 @@ export async function connectMcp(
 		void close().catch(() => {});
 	};
 	signal.addEventListener("abort", cancelled, { once: true });
+	const startup = async (serviceId: string, initial?: McpService) => {
+		signal.throwIfAborted();
+		if (closing) throw new Error("MCP manager closed");
+		const service =
+			initial ?? readServices().find((row) => row.id === serviceId);
+		if (!service?.enabled)
+			throw new Error(
+				"MCP service disabled or deleted; startup was not executed",
+			);
+		removeTools(serviceId);
+		const old = resources.get(serviceId);
+		if (old) {
+			resources.delete(serviceId);
+			await closeResource(old);
+		}
+		signal.throwIfAborted();
+		const previous = connections.findIndex((row) => row.id === serviceId);
+		const connection: McpConnection = {
+			id: service.id,
+			name: service.name,
+			status: "connecting",
+		};
+		if (previous === -1) connections.push(connection);
+		else connections[previous] = connection;
+		update();
+		const client = new Client({ name: "Weft", version: "1.0.0" });
+		const resource: McpClientResource = { client };
+		resources.set(serviceId, resource);
+		client.onerror = (error) => {
+			if (resource.close) return;
+			connection.error = String(error);
+			connection.status = "error";
+			update();
+		};
+		client.onclose = () => {
+			if (connection.status !== "error") connection.status = "closed";
+			if (resources.get(serviceId) === resource) removeTools(serviceId);
+			update();
+		};
+		let timeout: ReturnType<typeof setTimeout> | undefined;
+		let startupSignal: AbortSignal | undefined;
+		try {
+			const config = parseMcpConfig(service.config, service.env);
+			const controller = new AbortController();
+			startupSignal = AbortSignal.any([signal, controller.signal]);
+			timeout = setTimeout(
+				() => controller.abort(new Error("MCP service startup timed out")),
+				config.startup_timeout_sec * 1000,
+			);
+			const abortStartup = () => {
+				void closeResource(resource).catch(() => {});
+			};
+			startupSignal.addEventListener("abort", abortStartup, { once: true });
+			try {
+				startupSignal.throwIfAborted();
+				const transport =
+					"url" in config
+						? new StreamableHTTPClientTransport(new URL(config.url), {
+								requestInit: { headers: config.http_headers },
+							})
+						: new StdioClientTransport({
+								command: config.command,
+								args: config.args,
+								env: Object.fromEntries(
+									service.env.map(({ name, value }) => [name, value]),
+								),
+								stderr: "pipe",
+							});
+				if (transport instanceof StreamableHTTPClientTransport)
+					resource.transport = transport;
+				const stderrDecoder = new StringDecoder("utf8");
+				const stderr =
+					transport instanceof StdioClientTransport ? transport.stderr : null;
+				stderr?.on("data", (chunk: Buffer) => {
+					connection.stderr =
+						(connection.stderr ?? "") + stderrDecoder.write(chunk);
+					update();
+				});
+				stderr?.on("end", () => {
+					connection.stderr = (connection.stderr ?? "") + stderrDecoder.end();
+					update();
+				});
+				await client.connect(transport, {
+					timeout: config.startup_timeout_sec * 1000,
+					signal: startupSignal,
+				});
+				const pendingTools: McpTool[] = [];
+				const pendingHandlers = new Map<
+					string,
+					(
+						args: string,
+						imagesSupported: boolean,
+						review?: ToolReview,
+					) => Promise<ToolExecution>
+				>();
+				const cursors = new Set<string>();
+				let cursor: string | undefined;
+				do {
+					const page = await client.listTools(cursor ? { cursor } : {}, {
+						signal: startupSignal,
+						cacheMode: "refresh",
+					});
+					for (const tool of page.tools) {
+						const name = `mcp_tool_${sequence++}`;
+						pendingTools.push({
+							type: "function",
+							name,
+							description: `[MCP ${service.name}: ${tool.name}] ${tool.description ?? ""}`,
+							parameters: tool.inputSchema,
+						});
+						pendingHandlers.set(name, async (args, imagesSupported, review) => {
+							const enabled = () =>
+								readServices().some(
+									(row) => row.id === service.id && row.enabled,
+								);
+							const disabled = {
+								status: "failed" as const,
+								result: JSON.stringify({
+									mcpError: {
+										kind: "disabled",
+										service: service.name,
+										message:
+											"MCP service disabled or deleted; call was not executed",
+									},
+								}),
+							};
+							if (!enabled()) return disabled;
+							if (
+								resource.close ||
+								resources.get(service.id)?.client !== client
+							)
+								return {
+									status: "failed",
+									result: "MCP service unavailable; explicitly start it again",
+								};
+							try {
+								const argumentsValue: unknown = JSON.parse(args);
+								if (
+									!argumentsValue ||
+									typeof argumentsValue !== "object" ||
+									Array.isArray(argumentsValue)
+								)
+									throw new TypeError("MCP tool arguments must be an object");
+								await review?.({
+									name: tool.name,
+									description: `[MCP ${service.name}] ${tool.description ?? ""}`,
+									arguments: argumentsValue,
+									execution: { service: service.name },
+								});
+								signal.throwIfAborted();
+								if (!enabled()) return disabled;
+								if (
+									resource.close ||
+									resources.get(service.id)?.client !== client
+								)
+									return {
+										status: "failed",
+										result:
+											"MCP service unavailable; explicitly start it again",
+									};
+								// Supplying the discovered definition prevents the SDK's modern-header refresh/replay path.
+								const result = await client.callTool(
+									{
+										name: tool.name,
+										arguments: argumentsValue as Record<string, unknown>,
+									},
+									{ signal, toolDefinition: tool },
+								);
+								const content: InputContent[] = [];
+								for (const block of result.content) {
+									if (block.type === "image" && imagesSupported) {
+										try {
+											const images = submittedImages([
+												{
+													type: "input_image",
+													image_url: `data:${block.mimeType};base64,${block.data}`,
+												},
+											]);
+											const { data: _data, ...metadata } = block;
+											content.push(
+												{
+													type: "input_text",
+													text: JSON.stringify({ mcpImage: metadata }),
+												},
+												...images,
+											);
+											continue;
+										} catch {
+											/* Preserve unsupported image bytes below. */
+										}
+									}
+									content.push({
+										type: "input_text",
+										text: JSON.stringify({
+											mcpContent: block,
+											...(!["text", "image"].includes(block.type)
+												? {
+														notice:
+															block.type === "resource_link"
+																? "Resource link only; resource has not been read"
+																: "Unsupported MCP content retained as data",
+													}
+												: block.type === "image"
+													? {
+															notice: imagesSupported
+																? "Unsupported image retained as data"
+																: "Current model does not support image input; image retained as data",
+														}
+													: {}),
+										}),
+									});
+								}
+								const { content: _content, ...metadata } = result;
+								content.push({
+									type: "input_text",
+									text: JSON.stringify({ mcpResult: metadata }),
+								});
+								return {
+									status: result.isError ? "failed" : "succeeded",
+									result: content,
+								};
+							} catch (error) {
+								if (
+									error instanceof ModelError &&
+									(error.code === "modelCallLimit" ||
+										error.code === "answerWriteFailed")
+								)
+									throw error;
+								return {
+									status: "failed",
+									result: JSON.stringify({
+										mcpError: {
+											kind:
+												error instanceof ProtocolError
+													? "protocol"
+													: error instanceof SyntaxError ||
+															error instanceof TypeError
+														? "input"
+														: "connection",
+											message: String(error),
+											...(error instanceof Error && "code" in error
+												? { code: error.code }
+												: {}),
+											...(error instanceof Error && "data" in error
+												? { data: error.data }
+												: {}),
+										},
+									}),
+								};
+							}
+						});
+					}
+					cursor = page.nextCursor;
+					if (cursor && cursors.has(cursor))
+						throw new Error("MCP discovery repeated a pagination cursor");
+					if (cursor) cursors.add(cursor);
+				} while (cursor);
+				startupSignal.throwIfAborted();
+				if (connection.status !== "connecting")
+					throw new Error(
+						connection.error ?? "MCP client closed during discovery",
+					);
+				connection.status = "connected";
+				for (const tool of pendingTools) {
+					tools.set(tool.name, tool);
+					owners.set(tool.name, service.id);
+				}
+				for (const [name, handler] of pendingHandlers)
+					handlers.set(name, handler);
+				update();
+			} finally {
+				startupSignal.removeEventListener("abort", abortStartup);
+			}
+		} catch (error) {
+			connection.status = "error";
+			connection.error = String(
+				startupSignal?.aborted ? startupSignal.reason : error,
+			);
+			removeTools(serviceId);
+			await closeResource(resource).catch(() => {});
+			update();
+		} finally {
+			clearTimeout(timeout);
+		}
+		return connection;
+	};
 	if (signal.aborted) await close();
-	try {
+	else
 		await Promise.all(
 			services
 				.filter((service) => service.enabled)
-				.map(async (service, serviceIndex) => {
-					const connection: McpConnection = {
-						id: service.id,
-						name: service.name,
-						status: "connecting",
-					};
-					connections.push(connection);
-					update();
-					const client = new Client({ name: "Weft", version: "1.0.0" });
-					clients.push(client);
-					client.onerror = (error) => {
-						connection.error = String(error);
-						connection.status = "error";
-						update();
-					};
-					client.onclose = () => {
-						if (connection.status !== "error") connection.status = "closed";
-						update();
-					};
-					try {
-						signal.throwIfAborted();
-						const config = parseMcpConfig(service.config, service.env);
-						const transport =
-							"url" in config
-								? new StreamableHTTPClientTransport(new URL(config.url), {
-										requestInit: { headers: config.http_headers },
-									})
-								: new StdioClientTransport({
-										command: config.command,
-										args: config.args,
-										env: Object.fromEntries(
-											service.env.map(({ name, value }) => [name, value]),
-										),
-										stderr: "pipe",
-									});
-						if (transport instanceof StreamableHTTPClientTransport)
-							httpTransports.push(transport);
-						const stderrDecoder = new StringDecoder("utf8");
-						(transport instanceof StdioClientTransport
-							? transport.stderr
-							: null
-						)?.on("data", (chunk: Buffer) => {
-							connection.stderr =
-								(connection.stderr ?? "") + stderrDecoder.write(chunk);
-							update();
-						});
-						(transport instanceof StdioClientTransport
-							? transport.stderr
-							: null
-						)?.on("end", () => {
-							connection.stderr =
-								(connection.stderr ?? "") + stderrDecoder.end();
-							update();
-						});
-						await client.connect(transport, {
-							timeout: config.startup_timeout_sec * 1000,
-							signal,
-						});
-						let cursor: string | undefined;
-						do {
-							const page = await client.listTools(cursor ? { cursor } : {}, {
-								signal,
-								cacheMode: "refresh",
-							});
-							for (const tool of page.tools) {
-								const name = `mcp_${serviceIndex}_${tools.length}`;
-								owners.set(name, service.id);
-								tools.push({
-									type: "function",
-									name,
-									description: `[MCP ${service.name}: ${tool.name}] ${tool.description ?? ""}`,
-									parameters: tool.inputSchema,
-								});
-								handlers.set(name, async (args, imagesSupported, review) => {
-									const enabled = () =>
-										readServices().some(
-											(row) => row.id === service.id && row.enabled,
-										);
-									const disabled = {
-										status: "failed" as const,
-										result: JSON.stringify({
-											mcpError: {
-												kind: "disabled",
-												service: service.name,
-												message:
-													"MCP service disabled or deleted; call was not executed",
-											},
-										}),
-									};
-									if (!enabled()) return disabled;
-									try {
-										const argumentsValue: unknown = JSON.parse(args);
-										if (
-											!argumentsValue ||
-											typeof argumentsValue !== "object" ||
-											Array.isArray(argumentsValue)
-										)
-											throw new TypeError(
-												"MCP tool arguments must be an object",
-											);
-										await review?.({
-											name: tool.name,
-											description: `[MCP ${service.name}] ${tool.description ?? ""}`,
-											arguments: argumentsValue,
-											execution: { service: service.name },
-										});
-										signal.throwIfAborted();
-										if (!enabled()) return disabled;
-										// Supplying the discovered definition prevents the SDK's modern-header refresh/replay path.
-										const result = await client.callTool(
-											{
-												name: tool.name,
-												arguments: argumentsValue as Record<string, unknown>,
-											},
-											{ signal, toolDefinition: tool },
-										);
-										const content: InputContent[] = [];
-										for (const block of result.content) {
-											if (block.type === "image" && imagesSupported) {
-												try {
-													const images = submittedImages([
-														{
-															type: "input_image",
-															image_url: `data:${block.mimeType};base64,${block.data}`,
-														},
-													]);
-													const { data: _data, ...metadata } = block;
-													content.push(
-														{
-															type: "input_text",
-															text: JSON.stringify({ mcpImage: metadata }),
-														},
-														...images,
-													);
-													continue;
-												} catch {
-													/* Preserve unsupported image bytes below. */
-												}
-											}
-											content.push({
-												type: "input_text",
-												text: JSON.stringify({
-													mcpContent: block,
-													...(!["text", "image"].includes(block.type)
-														? {
-																notice:
-																	block.type === "resource_link"
-																		? "Resource link only; resource has not been read"
-																		: "Unsupported MCP content retained as data",
-															}
-														: block.type === "image"
-															? {
-																	notice: imagesSupported
-																		? "Unsupported image retained as data"
-																		: "Current model does not support image input; image retained as data",
-																}
-															: {}),
-												}),
-											});
-										}
-										const { content: _content, ...metadata } = result;
-										content.push({
-											type: "input_text",
-											text: JSON.stringify({ mcpResult: metadata }),
-										});
-										return {
-											status: result.isError ? "failed" : "succeeded",
-											result: content,
-										};
-									} catch (error) {
-										if (
-											error instanceof ModelError &&
-											(error.code === "modelCallLimit" ||
-												error.code === "answerWriteFailed")
-										)
-											throw error;
-										return {
-											status: "failed",
-											result: JSON.stringify({
-												mcpError: {
-													kind:
-														error instanceof ProtocolError
-															? "protocol"
-															: error instanceof SyntaxError ||
-																	error instanceof TypeError
-																? "input"
-																: "connection",
-													message: String(error),
-													...(error instanceof Error && "code" in error
-														? { code: error.code }
-														: {}),
-													...(error instanceof Error && "data" in error
-														? { data: error.data }
-														: {}),
-												},
-											}),
-										};
-									}
-								});
-							}
-							cursor = page.nextCursor;
-						} while (cursor);
-						connection.status = "connected";
-						update();
-					} catch (error) {
-						connection.status = "error";
-						connection.error = String(error);
-						await client.close().catch(() => {});
-						update();
-					}
-				}),
+				.map((service) => startup(service.id, service)),
 		);
-	} catch (error) {
-		await close().catch(() => {});
-		throw error;
-	}
 	return {
+		startup: (serviceId: string) => startup(serviceId),
 		tools: () =>
-			tools.filter((tool) =>
+			[...tools.values()].filter((tool) =>
 				readServices().some(
 					(service) => service.id === owners.get(tool.name) && service.enabled,
 				),

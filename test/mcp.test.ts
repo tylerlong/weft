@@ -1243,3 +1243,425 @@ for (const change of ["disable", "delete"]) {
 		}
 	});
 }
+
+test("explicit startup recovers failed service with latest Settings and publishes fresh tools in the same Agent", async () => {
+	let requests = 0;
+	let f!: Awaited<ReturnType<typeof fixture>>;
+	f = await fixture(async (request) => {
+		requests++;
+		if (requests === 1) {
+			assert(
+				!request.tools.some((tool) => tool.description?.includes("recovered:")),
+			);
+			assert(request.tools.some((tool) => tool.name === "mcp_startup"));
+			await f.settings([f.service("stable", "recovered")]);
+			return [
+				{
+					type: "function_call",
+					name: "mcp_startup",
+					call_id: "recover",
+					arguments: JSON.stringify({ service_id: "stable" }),
+				},
+			];
+		}
+		if (requests === 2)
+			return [call(mcpTool(request, "recovered"), "after-recovery")];
+		assert.match(JSON.stringify(request.input), /recovered: first/);
+		return [answer];
+	});
+	try {
+		const broken = f.service("stable", "broken");
+		broken.config = JSON.stringify({
+			command: join(tmpdir(), "weft-no-such-mcp"),
+			startup_timeout_sec: 1,
+		});
+		await f.settings([broken]);
+		assert.equal(
+			(await waitForAgent(f.base, await f.start())).status,
+			"succeeded",
+		);
+		assert.equal(requests, 3);
+		const logs = await f.logs();
+		assert.equal(
+			logs.filter((entry) => entry.event === "tools/call").length,
+			1,
+		);
+		assert.equal(
+			logs.filter((entry) => entry.event === "tools/list").length,
+			2,
+		);
+	} finally {
+		await f.close();
+	}
+});
+
+const startupCall = (service_id: string, call_id = "startup") => ({
+	type: "function_call",
+	name: "mcp_startup",
+	call_id,
+	arguments: JSON.stringify({ service_id }),
+});
+
+test("replacement adopts saved credentials, removes old identities and leaves other services intact", async () => {
+	let requests = 0;
+	let old!: Tool;
+	let untouched!: Tool;
+	let f!: Awaited<ReturnType<typeof fixture>>;
+	f = await fixture(async (request) => {
+		requests++;
+		if (requests === 1) {
+			old = mcpTool(request, "before");
+			untouched = mcpTool(request, "untouched");
+			const replacement = f.service("selected", "after");
+			replacement.env = [
+				{ name: "WEFT_MCP_FIXTURE_VALUE", value: "replacement-credential" },
+			];
+			await f.settings([replacement, f.service("other", "untouched")]);
+			return [
+				call(old, "captured-config"),
+				startupCall("selected"),
+				call(old, "stale"),
+				call(untouched, "other-call"),
+			];
+		}
+		assert(!request.tools.some((tool) => tool.name === old.name));
+		assert.equal(mcpTool(request, "untouched").name, untouched.name);
+		if (requests === 2) {
+			assert.match(JSON.stringify(request.input), /before: first/);
+			return [call(mcpTool(request, "after"), "new-credentials")];
+		}
+		assert.match(JSON.stringify(request.input), /replacement-credential/);
+		return [answer];
+	});
+	try {
+		await f.settings([
+			f.service("selected", "before"),
+			f.service("other", "untouched"),
+		]);
+		assert.equal(
+			(await waitForAgent(f.base, await f.start())).status,
+			"succeeded",
+		);
+		const logs = await f.logs();
+		assert.deepEqual(
+			logs
+				.filter((entry) => entry.event === "tools/call")
+				.map((entry) => entry.label),
+			["before", "untouched", "after"],
+		);
+		assert.equal(logs.filter((entry) => entry.event === "start").length, 3);
+	} finally {
+		await f.close();
+	}
+});
+
+for (const transport of ["stdio", "http"] as const) {
+	test(`${transport} replacement discovery failure removes old and partial tools without fallback or replay`, async () => {
+		const peer = await httpMcpFixture();
+		let requests = 0;
+		let stale!: Tool;
+		let f!: Awaited<ReturnType<typeof fixture>>;
+		f = await fixture(async (request) => {
+			requests++;
+			if (requests === 1) {
+				stale = mcpTool(request, "old");
+				const replacement = f.service("selected", "partial");
+				if (transport === "stdio")
+					replacement.env.push({
+						name: "WEFT_MCP_DISCOVERY_MODE",
+						value: "fail-second",
+					});
+				else
+					replacement.config = JSON.stringify({
+						url: `${peer.url}/partial`,
+						startup_timeout_sec: 1,
+					});
+				await f.settings([replacement, f.service("other", "healthy")]);
+				return [
+					call(stale, "uncertain", "protocol"),
+					startupCall("selected"),
+					call(stale, "stale"),
+				];
+			}
+			assert(mcpTool(request, "healthy"));
+			assert(
+				!request.tools.some(
+					(tool) =>
+						tool.name === stale.name ||
+						tool.description?.includes("partial:") ||
+						tool.description?.includes("controlled HTTP tool"),
+				),
+			);
+			assert.match(JSON.stringify(request.input), /second-page failure/);
+			return [answer];
+		});
+		try {
+			await f.settings([
+				f.service("selected", "old"),
+				f.service("other", "healthy"),
+			]);
+			assert.equal(
+				(await waitForAgent(f.base, await f.start())).status,
+				"succeeded",
+			);
+			assert.equal(
+				(await f.logs()).filter((entry) => entry.event === "tools/call").length,
+				1,
+			);
+			assert.equal(
+				peer.requests.filter((entry) => entry.method === "tools/call").length,
+				0,
+			);
+		} finally {
+			await f.close();
+			await peer.close();
+		}
+	});
+}
+
+test("startup initializes a newly enabled service and rejects disabled or deleted services", async () => {
+	let requests = 0;
+	let f!: Awaited<ReturnType<typeof fixture>>;
+	f = await fixture(async (request) => {
+		requests++;
+		if (requests === 1) {
+			assert(
+				!request.tools.some((tool) => tool.description?.includes("late:")),
+			);
+			await f.settings([f.service("late")]);
+			return [startupCall("late")];
+		}
+		if (requests === 2) {
+			assert(mcpTool(request, "late"));
+			await f.settings([{ ...f.service("late"), enabled: false }]);
+			return [startupCall("late", "disabled")];
+		}
+		if (requests === 3) {
+			await f.settings([]);
+			return [startupCall("late", "deleted")];
+		}
+		assert.match(JSON.stringify(request.input), /disabled or deleted/);
+		return [answer];
+	});
+	try {
+		await f.settings([{ ...f.service("late"), enabled: false }]);
+		assert.equal(
+			(await waitForAgent(f.base, await f.start())).status,
+			"succeeded",
+		);
+		assert.equal(
+			(await f.logs()).filter((entry) => entry.event === "start").length,
+			1,
+		);
+	} finally {
+		await f.close();
+	}
+});
+
+for (const mode of ["hang-initialize", "hang-second"]) {
+	test(`startup timeout bounds ${mode} and leaves no partial catalog`, async () => {
+		let requests = 0;
+		let f!: Awaited<ReturnType<typeof fixture>>;
+		f = await fixture(async (request) => {
+			requests++;
+			if (requests === 1) {
+				const service = f.service("hung");
+				service.config = JSON.stringify({
+					...JSON.parse(service.config),
+					startup_timeout_sec: 1,
+				});
+				service.env.push({ name: "WEFT_MCP_DISCOVERY_MODE", value: mode });
+				await f.settings([service]);
+				return [startupCall("hung")];
+			}
+			assert(
+				!request.tools.some((tool) => tool.description?.includes("hung:")),
+			);
+			assert.match(JSON.stringify(request.input), /timed out|abort|closed/i);
+			return [answer];
+		});
+		try {
+			const began = Date.now();
+			const agent = await waitForAgent(f.base, await f.start());
+			assert.equal(agent.status, "succeeded", JSON.stringify(agent));
+			assert(Date.now() - began < 5000);
+			if (mode === "hang-second")
+				assert(
+					(await f.logs()).some(
+						(entry) =>
+							entry.event === "tools/list" &&
+							entry.detail.cursor === "page-two",
+					),
+				);
+			await eventually(async () =>
+				(await f.logs()).some((entry) => ["end", "stop"].includes(entry.event)),
+			);
+		} finally {
+			await f.close();
+		}
+	});
+}
+
+test("cancelling explicit discovery closes its owned process and publishes no partial tools", async () => {
+	let f!: Awaited<ReturnType<typeof fixture>>;
+	f = await fixture(async () => {
+		const service = f.service("cancel-startup");
+		service.env.push({ name: "WEFT_MCP_DISCOVERY_MODE", value: "hang-second" });
+		await f.settings([service]);
+		return [startupCall(service.id)];
+	});
+	try {
+		const id = await f.start();
+		await eventually(async () =>
+			(await f.logs()).some(
+				(entry) =>
+					entry.event === "tools/list" && entry.detail.cursor === "page-two",
+			),
+		);
+		await f.send(`/api/agents/${id}/cancel`, {});
+		assert.equal((await waitForAgent(f.base, id)).status, "cancelled");
+		await eventually(async () =>
+			(await f.logs()).some((entry) => ["end", "stop"].includes(entry.event)),
+		);
+		assert.equal(
+			(await f.logs()).filter((entry) => entry.event === "tools/call").length,
+			0,
+		);
+	} finally {
+		await f.close();
+	}
+});
+
+test("HTTP reconnect adopts saved endpoint and credentials without touching another service", async () => {
+	const peer = await httpMcpFixture();
+	let requests = 0;
+	let f!: Awaited<ReturnType<typeof fixture>>;
+	f = await fixture(async (request) => {
+		requests++;
+		if (requests === 1) {
+			const replacement = {
+				...f.service("http"),
+				config: JSON.stringify({
+					url: `${peer.url}/auth`,
+					http_headers: { Authorization: "Bearer <TOKEN>" },
+				}),
+				env: [{ name: "TOKEN", value: "controlled-<ONCE>" }],
+			};
+			await f.settings([replacement, f.service("other", "healthy")]);
+			return [startupCall("http")];
+		}
+		assert(mcpTool(request, "healthy"));
+		const tool = request.tools.find((tool) =>
+			tool.description?.includes("controlled HTTP tool"),
+		);
+		assert(tool);
+		if (requests === 2) return [call(tool, "http-recovered")];
+		assert.match(JSON.stringify(request.input), /HTTP result/);
+		return [answer];
+	});
+	try {
+		await f.settings([
+			{
+				...f.service("http"),
+				config: JSON.stringify({ url: `${peer.url}/auth` }),
+				env: [],
+			},
+			f.service("other", "healthy"),
+		]);
+		assert.equal(
+			(await waitForAgent(f.base, await f.start())).status,
+			"succeeded",
+		);
+		assert.equal(
+			peer.requests.filter((row) => row.method === "tools/call").length,
+			1,
+		);
+		assert.equal(
+			peer.requests.find((row) => row.method === "tools/call")?.headers
+				.authorization,
+			"Bearer controlled-<ONCE>",
+		);
+		assert.equal(
+			(await f.logs()).filter((row) => row.event === "start").length,
+			1,
+		);
+	} finally {
+		await f.close();
+		await peer.close();
+	}
+});
+
+test("Sub-agent replacement leaves the Root's captured client and tools intact", async () => {
+	let rootRequests = 0;
+	let childRequests = 0;
+	let childReplaced!: () => void;
+	const replaced = new Promise<void>((resolve) => {
+		childReplaced = resolve;
+	});
+	let f!: Awaited<ReturnType<typeof fixture>>;
+	f = await fixture(async (request) => {
+		const child = request.input.some(
+			(part) =>
+				part.role === "user" &&
+				JSON.stringify(part.content).includes("isolated replacement child"),
+		);
+		if (child) {
+			childRequests++;
+			if (childRequests === 1) {
+				assert(mcpTool(request, "original"));
+				await f.settings([f.service("shared", "replacement")]);
+				return [startupCall("shared")];
+			}
+			assert(mcpTool(request, "replacement"));
+			childReplaced();
+			if (childRequests === 2)
+				return [call(mcpTool(request, "replacement"), "child-use")];
+			return [answer];
+		}
+		rootRequests++;
+		assert(mcpTool(request, "original"));
+		if (rootRequests === 1)
+			return [
+				{
+					type: "function_call",
+					name: "create_sub_agent",
+					call_id: "create",
+					arguments: JSON.stringify({ prompt: "isolated replacement child" }),
+				},
+			];
+		if (rootRequests === 2) {
+			await replaced;
+			return [call(mcpTool(request, "original"), "root-use")];
+		}
+		return [answer];
+	});
+	try {
+		await f.settings([f.service("shared", "original")]);
+		assert.equal(
+			(await waitForAgent(f.base, await f.start())).status,
+			"succeeded",
+		);
+		const db = new DatabaseSync(f.path);
+		const child = db
+			.prepare(
+				"SELECT id FROM agents WHERE created_by_tool_call_id IS NOT NULL",
+			)
+			.get();
+		db.close();
+		assert(child);
+		assert.equal(
+			(await waitForAgent(f.base, Number(child.id))).status,
+			"succeeded",
+		);
+		const logs = await f.logs();
+		assert.equal(logs.filter((row) => row.event === "start").length, 3);
+		const business = logs.filter((row) => row.event === "tools/call");
+		assert.deepEqual(
+			new Set(business.map((row) => row.label)),
+			new Set(["original", "replacement"]),
+		);
+		assert.equal(new Set(business.map((row) => row.pid)).size, 2);
+	} finally {
+		await f.close();
+	}
+});

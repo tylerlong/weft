@@ -1022,6 +1022,7 @@ commandTest(
 						"create_sub_agent",
 						"exec_command",
 						"mcp_diagnostics",
+						"mcp_startup",
 						"read_file",
 						"read_image",
 						"read_tool_output",

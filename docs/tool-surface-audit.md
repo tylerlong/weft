@@ -22,6 +22,8 @@
 | `create_sub_agent` | Weft 自己的 Agent 执行核心；支持明确背景、模型和 reasoning 覆盖，立即返回身份，终态主动通知父任务。                                                 | 不是 Codex spawn-agent 工具的包装。上下文不自动继承、通知和等待规则是 ADR 0002 已确定的产品行为，不是第三方参数被删。没有依据为“直接 expose”而更换调度框架。                                                                                                             |
 | `cancel_sub_agent` | Weft 自己的取消逻辑；父模型可取消直接子树，等待清理并返回实际结果。                                                                                 | 不是上游工具包装。保留归属校验、部分结果和真实取消事实。                                                                                                                                                                                                                 |
 
+`mcp_startup({service_id})` 由 `src/mcp-client.ts` 定义，在当前 Agent 显式初始化或替换一个已启用服务，使用最新保存的 Settings。替换先关闭旧客户端并移除工具，成功完成全部发现后才发布下一次请求的目录；失败无旧凭据回退或业务重放。服务启动时限覆盖初始化及全部发现，取消清理所属资源。Settings 编辑和凭据录入仍由用户完成；单独的 Docker／Colima 准备和真实模型验收状态见 #216／#217。
+
 工具注册见 `src/openrouter.ts`、`src/command-tools.ts` 和 `src/file-tools.ts`；命令、文件和子 Agent 分派见 `src/server.ts`。MCP 工具来自服务发现；浏览器只增加连接归属用 `browser_connect`，不另建页面动作 function tools。
 
 ## read_file 文本分页

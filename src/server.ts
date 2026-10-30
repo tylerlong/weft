@@ -32,7 +32,11 @@ import {
 	submittedImages,
 	userContent,
 } from "./image-content.ts";
-import { connectMcp, type McpConnection } from "./mcp-client.ts";
+import {
+	connectMcp,
+	type McpConnection,
+	mcpStartupTool,
+} from "./mcp-client.ts";
 import { type McpService, validateMcpServices } from "./mcp-config.ts";
 import {
 	mcpDiagnostics,
@@ -887,7 +891,12 @@ export function createServer(
 			for (const secret of [key, JSON.stringify(key).slice(1, -1)])
 				if (secret && !secrets.includes(secret)) secrets.push(secret);
 		};
-		for (const secret of mcpSecrets(readMcpServices())) rememberKey(secret);
+		const readAgentMcpServices = () => {
+			const services = readMcpServices();
+			for (const secret of mcpSecrets(services)) rememberKey(secret);
+			return services;
+		};
+		readAgentMcpServices();
 		const redactTool = (text: string, preserveKeys?: readonly string[]) =>
 			redactJsonText(
 				text,
@@ -926,8 +935,8 @@ export function createServer(
 			);
 		try {
 			mcp = await connectMcp(
-				readMcpServices(),
-				readMcpServices,
+				readAgentMcpServices(),
+				readAgentMcpServices,
 				state.controller.signal,
 				(connections) => {
 					database
@@ -1089,8 +1098,12 @@ export function createServer(
 					return {
 						...next,
 						scratch,
-						instructions: `${instructions}\n\n${skillsContext}\nChat personal browser target: ${JSON.stringify(browserTarget(id))}. Use browser_connect to establish or explicitly change the tracked personal target; never replace it because login or connection failed. Temporary browsing uses ordinary CLI sessions and does not change this target. A saved target is not proof of a live connection or website login. Existing connections keep their actual target; reconnect explicitly after a change.\nMCP connections for this Agent: ${safeMcpConnections(mcp?.connections ?? [])}. Enabled MCP services use their configured accounts and environment. All tool calls follow the global safety review setting. Use mcp_diagnostics to inspect current Settings and this Agent's runtime failures instead of searching application storage or exporting settings. Do not directly read, query, copy, or modify Weft's operational database at ${JSON.stringify(path)}. Ordinary project and isolated test databases remain usable. Configuration editing, enabling services and credential entry remain user actions in Settings. Obtain user confirmation before disruptive restarts, software installation, or system configuration changes; decide when and how to ask from the actual situation. Resource links are not already-read resources. MCP failures are facts; choose subsequent action without assuming an operation can safely be replayed.`,
-						additionalTools: [mcpDiagnosticsTool, ...(mcp?.tools() ?? [])],
+						instructions: `${instructions}\n\n${skillsContext}\nChat personal browser target: ${JSON.stringify(browserTarget(id))}. Use browser_connect to establish or explicitly change the tracked personal target; never replace it because login or connection failed. Temporary browsing uses ordinary CLI sessions and does not change this target. A saved target is not proof of a live connection or website login. Existing connections keep their actual target; reconnect explicitly after a change.\nMCP connections for this Agent: ${safeMcpConnections(mcp?.connections ?? [])}. Enabled MCP services use their configured accounts and environment. All tool calls follow the global safety review setting. Use mcp_diagnostics to inspect current Settings and this Agent's runtime failures instead of searching application storage or exporting settings. Use mcp_startup with a stable service_id to initialize or explicitly replace this Agent's service using latest saved Settings, then choose each business call explicitly; no prior operation is replayed. Do not directly read, query, copy, or modify Weft's operational database at ${JSON.stringify(path)}. Ordinary project and isolated test databases remain usable. Configuration editing, enabling services and credential entry remain user actions in Settings. Obtain user confirmation before disruptive restarts, software installation, or system configuration changes; decide when and how to ask from the actual situation. Resource links are not already-read resources. MCP failures are facts; choose subsequent action without assuming an operation can safely be replayed.`,
+						additionalTools: [
+							mcpDiagnosticsTool,
+							mcpStartupTool,
+							...(mcp?.tools() ?? []),
+						],
 						secrets,
 					};
 				},
@@ -1166,6 +1179,57 @@ export function createServer(
 								result: JSON.stringify({
 									error: caughtError(error, "invalidInput"),
 								}),
+							};
+						}
+					}
+					if (name === "mcp_startup") {
+						try {
+							const value: unknown = JSON.parse(args);
+							if (
+								!value ||
+								typeof value !== "object" ||
+								Array.isArray(value) ||
+								Object.keys(value).length !== 1 ||
+								!("service_id" in value) ||
+								typeof value.service_id !== "string" ||
+								!value.service_id
+							)
+								throw new Error("Expected service_id string");
+							const service = readMcpServices().find(
+								(row) => row.id === value.service_id,
+							);
+							if (!service?.enabled)
+								throw new Error(
+									"MCP service disabled or deleted; startup was not executed",
+								);
+							for (const secret of mcpSecrets([service])) rememberKey(secret);
+							await review?.({
+								name,
+								description: mcpStartupTool.description,
+								arguments: value,
+								execution: {
+									service: mcpDiagnostics([service], [], redactTool)[0],
+									effect:
+										"Replace only this Agent's MCP client, prepare supported prerequisites, initialize and discover all tools using latest saved Settings; executes the configured stdio program or contacts its HTTP endpoint with locally supplied credentials. No business calls are replayed.",
+								},
+							});
+							signal?.throwIfAborted();
+							const connection = await mcp?.startup(value.service_id);
+							return {
+								status:
+									connection?.status === "connected" ? "succeeded" : "failed",
+								result: safeMcpConnections(connection ? [connection] : []),
+							};
+						} catch (error) {
+							if (
+								error instanceof ModelError &&
+								(error.code === "modelCallLimit" ||
+									error.code === "answerWriteFailed")
+							)
+								throw error;
+							return {
+								status: signal?.aborted ? "interrupted" : "failed",
+								result: redactTool(String(error)),
 							};
 						}
 					}

@@ -67,7 +67,22 @@ export async function httpMcpFixture() {
 				serverInfo: { name: "controlled-http", version: "1" },
 			});
 		} else if (message.method === "tools/list") {
+			if (req.url === "/partial" && message.params?.cursor) {
+				res.writeHead(200, { "content-type": "application/json" }).end(
+					JSON.stringify({
+						jsonrpc: "2.0",
+						id: message.id,
+						error: {
+							code: -32603,
+							message: "controlled HTTP second-page failure",
+						},
+					}),
+				);
+				return;
+			}
+
 			respond({
+				...(req.url === "/partial" ? { nextCursor: "second" } : {}),
 				tools: [
 					{
 						name: "read_file",

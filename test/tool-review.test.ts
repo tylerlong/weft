@@ -37,7 +37,7 @@ const answer = {
 
 async function fixture(
 	model: (request: ModelRequest) => unknown[] | Promise<unknown[]>,
-	beforeAllow?: () => Promise<void>,
+	beforeAllow?: () => Promise<undefined | Response>,
 ) {
 	const directory = await realpath(
 		await mkdtemp(join(tmpdir(), "tool-review-")),
@@ -50,7 +50,8 @@ async function fixture(
 			const body = JSON.parse(String(init?.body));
 			if (String(url).endsWith("/decisions")) {
 				reviews.push(body.state);
-				await beforeAllow?.();
+				const reviewResponse = await beforeAllow?.();
+				if (reviewResponse) return reviewResponse;
 				return Response.json({
 					id: `review-${reviews.length}`,
 					model: "typesafe/jev-controlled",
@@ -538,6 +539,116 @@ for (const transport of ["stdio", "http"] as const) {
 		} finally {
 			await f.close();
 			await peer?.close();
+		}
+	});
+}
+
+for (const action of [
+	"allow",
+	"block",
+	"failure",
+	"disabled",
+	"disable-during-review",
+	"budget",
+] as const) {
+	test(`MCP startup ${action} preserves review gating and request accounting`, async () => {
+		const peer = await httpMcpFixture();
+		let round = 0;
+		const service = {
+			id: "start-reviewed",
+			name: "reviewed startup",
+			enabled: true,
+			config: JSON.stringify({
+				url: peer.url,
+				startup_timeout_sec: 1,
+				http_headers: { Authorization: "Bearer <TOKEN>" },
+			}),
+			env: [{ name: "TOKEN", value: "startup-private-credential" }],
+		};
+		const f = await fixture(
+			(request) => {
+				if (++round === 1) {
+					assert(request.tools.some((tool) => tool.name === "mcp_startup"));
+					return [call("mcp_startup", { service_id: service.id })];
+				}
+				return [answer];
+			},
+			async () => {
+				assert.equal(
+					peer.requests.filter((row) => row.method === "initialize").length,
+					1,
+					"replacement must wait for review",
+				);
+				if (action === "disable-during-review")
+					await f.send(
+						"/api/mcp-settings",
+						{ services: [{ ...service, enabled: false }] },
+						"PUT",
+					);
+				if (action === "block")
+					return Response.json({
+						answers: { safety: { type: "choice", choice: "block" } },
+					});
+				if (action === "failure") return Response.json({ invalid: true });
+			},
+		);
+		try {
+			await f.send("/api/mcp-settings", { services: [service] }, "PUT");
+			if (action === "disabled")
+				await f.send("/api/safety-review", { safetyReview: false }, "PATCH");
+			if (action === "budget") {
+				const db = new DatabaseSync(f.path);
+				db.prepare("UPDATE settings SET model_call_limit=1 WHERE id=1").run();
+				db.close();
+			}
+			const agent = await f.run();
+			assert.equal(agent.status, action === "budget" ? "failed" : "succeeded");
+			assert.equal(
+				f.reviews.length,
+				action === "disabled" || action === "budget" ? 0 : 1,
+			);
+			if (f.reviews.length) {
+				assert.match(JSON.stringify(f.reviews[0].execution), /Authorization/);
+				assert.match(JSON.stringify(f.reviews[0].execution), /TOKEN/);
+				assert(
+					!JSON.stringify(f.reviews[0]).includes("startup-private-credential"),
+				);
+			}
+			assert.equal(
+				peer.requests.filter((row) => row.method === "initialize").length,
+				action === "allow" || action === "disabled" ? 2 : 1,
+			);
+			assert.equal(
+				peer.requests.filter((row) => row.method === "tools/call").length,
+				0,
+			);
+			const db = new DatabaseSync(f.path);
+			const record = db
+				.prepare(
+					"SELECT status,result FROM tool_calls WHERE call_id='mcp_startup'",
+				)
+				.get();
+			const count = Number(
+				db.prepare("SELECT count(*) AS n FROM model_calls").get()?.n,
+			);
+			db.close();
+			assert.equal(
+				count,
+				action === "budget" ? 1 : action === "disabled" ? 2 : 3,
+			);
+			assert.equal(
+				record?.status,
+				action === "allow" || action === "disabled"
+					? "succeeded"
+					: action === "budget"
+						? "not_executed"
+						: "failed",
+			);
+			if (action === "block") assert.match(String(record?.result), /blocked/);
+			if (action === "failure") assert.match(String(record?.result), /failed/);
+		} finally {
+			await f.close();
+			await peer.close();
 		}
 	});
 }
