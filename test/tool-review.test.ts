@@ -731,7 +731,7 @@ for (const change of ["selected", "unrelated"] as const) {
 	});
 }
 
-test("startup review sees meaningful unexpanded stdio launch arguments and credential references", async () => {
+test("startup review keeps arbitrary argv credentials opaque and describes full execution scope", async () => {
 	let round = 0;
 	const f = await fixture(() =>
 		++round === 1
@@ -749,7 +749,13 @@ test("startup review sees meaningful unexpanded stdio launch arguments and crede
 			enabled: true,
 			config: JSON.stringify({
 				command: process.execPath,
-				args: [script, logPath, "<LABEL>"],
+				args: [
+					script,
+					logPath,
+					"<LABEL>",
+					"--api-key",
+					"literal-private-token",
+				],
 				startup_timeout_sec: 2,
 			}),
 			env: [{ name: "LABEL", value: "private-label-value" }],
@@ -758,13 +764,28 @@ test("startup review sees meaningful unexpanded stdio launch arguments and crede
 		assert.equal((await f.run()).status, "succeeded");
 		assert.equal(f.reviews.length, 1);
 		const execution = f.reviews[0].execution as {
-			launch: { command: string; args: string[] };
+			service: {
+				launch: {
+					command: string;
+					argument_count: number;
+					variable_references: string[];
+				};
+			};
+			effect: string;
 		};
-		assert.equal(execution.launch.command, process.execPath);
-		assert(execution.launch.args[0].endsWith("/mcp-stdio-fixture.ts"));
-		assert.equal(execution.launch.args[1], logPath);
-		assert.equal(execution.launch.args[2], "<LABEL>");
-		assert(!JSON.stringify(f.reviews[0]).includes("private-label-value"));
+		assert.equal(execution.service.launch.command, process.execPath);
+		assert.equal(execution.service.launch.argument_count, 5);
+		assert.deepEqual(execution.service.launch.variable_references, ["LABEL"]);
+		assert.match(execution.effect, /arbitrary shell\/script code/);
+		assert.match(execution.effect, /full access/);
+		assert.match(execution.effect, /existing stopped Colima/);
+		for (const secret of [
+			"private-label-value",
+			"literal-private-token",
+			script,
+			logPath,
+		])
+			assert(!JSON.stringify(f.reviews[0]).includes(secret));
 	} finally {
 		await f.close();
 	}

@@ -37,11 +37,7 @@ import {
 	type McpConnection,
 	mcpStartupTool,
 } from "./mcp-client.ts";
-import {
-	type McpService,
-	parseMcpConfig,
-	validateMcpServices,
-} from "./mcp-config.ts";
+import { type McpService, validateMcpServices } from "./mcp-config.ts";
 import {
 	mcpDiagnostics,
 	mcpDiagnosticsTool,
@@ -1207,32 +1203,15 @@ export function createServer(
 									"MCP service disabled or deleted; startup was not executed",
 								);
 							for (const secret of mcpSecrets([service])) rememberKey(secret);
-							const launch = parseMcpConfig(service.config);
-							const credentialReferences = (value: string) => {
-								for (const variable of service.env)
-									if (variable.value)
-										value = value.replaceAll(
-											variable.value,
-											`<${variable.name}>`,
-										);
-								return redactTool(value);
-							};
 							await review?.({
 								name,
 								description: mcpStartupTool.description,
 								arguments: value,
 								execution: {
 									service: mcpDiagnostics([service], [], redactTool)[0],
-									...("url" in launch
-										? {}
-										: {
-												launch: {
-													command: credentialReferences(launch.command),
-													args: launch.args.map(credentialReferences),
-												},
-											}),
+
 									effect:
-										"Replace only this Agent's MCP client, prepare supported prerequisites, initialize and discover all tools using latest saved Settings; executes the configured stdio program or contacts its HTTP endpoint with locally supplied credentials. No business calls are replayed.",
+										"Replace only this Agent's MCP client and catalog, then initialize and discover all tools using the reviewed saved Settings. Launches the user-configured executable with opaque user-owned arguments (which may contain arbitrary shell/script code and credentials), or contacts its HTTP endpoint using local credentials. The configured program has the current system user's full access; Weft does not sandbox its own startup effects. For recognized supported Jira Docker configuration, deterministic preparation may start an existing stopped Colima profile and check Docker readiness, but never creates profiles, switches context, installs software or restarts a running VM. No business calls are replayed.",
 								},
 							});
 							signal?.throwIfAborted();

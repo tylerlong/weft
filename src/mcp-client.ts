@@ -27,7 +27,7 @@ export const mcpStartupTool: McpTool = {
 	type: "function",
 	name: "mcp_startup",
 	description:
-		"Start or reconnect one enabled MCP service for this Agent using latest saved Settings. Replaces this Agent's old tools/client before startup; failure leaves no old tools or credentials. Bounded initialization and complete discovery refresh the next model request. Does not replay business calls or change Settings. Known deterministic prerequisite preparation is part of this operation; it may start an existing stopped supported runtime, never restart running infrastructure, install software or change system configuration. Credentials remain local.",
+		"Start or reconnect one enabled MCP service for this Agent using latest saved Settings. Replaces this Agent's old tools/client before startup; failure leaves no old tools or credentials. Bounded initialization and complete discovery refresh the next model request. Does not replay business calls or change Settings. Known deterministic prerequisite preparation is part of this operation; Weft may start an existing stopped supported runtime, but never restarts running infrastructure, installs software or changes system configuration. The user-configured program itself is trusted external code with the current user's full access and may have arbitrary startup effects; its opaque arguments can contain credentials and are not exported to models. Credentials remain local.",
 	parameters: {
 		type: "object",
 		properties: { service_id: { type: "string" } },
