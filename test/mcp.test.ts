@@ -144,6 +144,89 @@ const mcpTool = (request: Request, label: string) => {
 	return tool;
 };
 
+test("supported diagnostics distinguish saved configuration from this Agent runtime without credentials", async () => {
+	let requests = 0;
+	const f = await fixture(async (request) => {
+		requests++;
+		assert.match(request.instructions ?? "", /mcp_diagnostics/);
+		assert.match(
+			request.instructions ?? "",
+			/Do not directly read, query, copy, or modify Weft's operational database/,
+		);
+		assert.match(
+			request.instructions ?? "",
+			/user confirmation before disruptive restarts/,
+		);
+		if (requests === 1) {
+			await f.settings([...services, f.service("newly-added")]);
+			const tool = request.tools.find(
+				(tool) => tool.name === "mcp_diagnostics",
+			);
+			assert(tool);
+			return [
+				{
+					type: "function_call",
+					name: tool.name,
+					call_id: "diagnose",
+					arguments: "{}",
+				},
+			];
+		}
+		const result = request.input.find(
+			(item) => item.type === "function_call_output",
+		);
+		assert(result);
+		const diagnostics = JSON.parse(String(result.output));
+		assert.equal(diagnostics.services.length, 5);
+		const byId = (id: string) =>
+			diagnostics.services.find((service: { id: string }) => service.id === id);
+		assert.equal(byId("healthy").runtime.status, "connected");
+		assert.equal(byId("disabled").enabled, false);
+		assert.equal(byId("disabled").runtime.status, "not_started");
+		assert.equal(byId("failed").enabled, true);
+		assert.equal(byId("failed").runtime.status, "error");
+		assert.match(byId("failed").runtime.error, /ENOENT/);
+		assert.equal(byId("newly-added").runtime.status, "not_started");
+		assert.equal(byId("http").transport, "streamable_http");
+		assert.equal(byId("http").launch.url, "https://example.invalid/mcp");
+		assert.deepEqual(byId("http").launch.headers, ["Authorization"]);
+		assert.deepEqual(byId("healthy").environment, [
+			{ name: "WEFT_MCP_FIXTURE_VALUE", configured: true },
+		]);
+		assert(!String(result.output).includes("controlled-value"));
+		assert(!String(result.output).includes("literal-auth-secret"));
+		assert(!String(result.output).includes("query-auth-secret"));
+		return [answer];
+	});
+	const failed = f.service("failed");
+	failed.config = JSON.stringify({
+		command: join(tmpdir(), "weft-diagnostics-missing"),
+	});
+	const services = [
+		f.service("healthy"),
+		{ ...f.service("disabled"), enabled: false },
+		failed,
+		{
+			...f.service("http"),
+			enabled: false,
+			config: JSON.stringify({
+				url: "https://example.invalid/mcp?token=query-auth-secret",
+				http_headers: { Authorization: "Bearer literal-auth-secret" },
+			}),
+		},
+	];
+	try {
+		await f.settings(services);
+		assert.equal(
+			(await waitForAgent(f.base, await f.start())).status,
+			"succeeded",
+		);
+		assert.equal(requests, 2);
+	} finally {
+		await f.close();
+	}
+});
+
 test("real stdio discovery paginates, maps collisions, preserves schemas and ordered MCP results", async () => {
 	const requests: Request[] = [];
 	const f = await fixture((request) => {
@@ -791,9 +874,44 @@ test("stderr preserves split UTF8 and withholds incomplete credentials from diag
 		if (requests === 1) {
 			acceptModel();
 			await released;
+			return [
+				{
+					type: "function_call",
+					name: "mcp_diagnostics",
+					call_id: "partial-stderr",
+					arguments: "{}",
+				},
+			];
+		}
+		if (requests === 2) {
+			const output = request.input.find(
+				(item) => item.type === "function_call_output",
+			);
+			assert(output);
+			assert.equal(
+				JSON.parse(String(output.output)).services[0].runtime.stderr,
+				"界 stderr ",
+			);
 			return [call(mcpTool(request, "stderr"), "finish-stderr")];
 		}
 		assert.match(String(request.instructions), /界 stderr \[REDACTED\]/);
+		if (requests === 3)
+			return [
+				{
+					type: "function_call",
+					name: "mcp_diagnostics",
+					call_id: "complete-stderr",
+					arguments: "{}",
+				},
+			];
+		const output = request.input
+			.filter((item) => item.type === "function_call_output")
+			.at(-1);
+		assert(output);
+		assert.equal(
+			JSON.parse(String(output.output)).services[0].runtime.stderr,
+			"界 stderr [REDACTED]\n",
+		);
 		return [answer];
 	});
 	const diagnostics = async () => {
@@ -812,7 +930,7 @@ test("stderr preserves split UTF8 and withholds incomplete credentials from diag
 		assert.equal((await diagnostics())[0].stderr, "界 stderr ");
 		releaseModel();
 		assert.equal((await waitForAgent(f.base, id)).status, "succeeded");
-		assert.equal(requests, 2);
+		assert.equal(requests, 4);
 		assert.equal((await diagnostics())[0].stderr, "界 stderr [REDACTED]\n");
 		const db = new DatabaseSync(f.path);
 		const saved = db
@@ -884,7 +1002,7 @@ for (const auth of ["none", "auth", "key"]) {
 			);
 			const id = await f.start();
 			assert.equal((await waitForAgent(f.base, id)).status, "succeeded");
-			assert.equal(requests, 2);
+			assert.equal(requests, 4);
 			const calls = peer.requests.filter(
 				(item) => item.method === "tools/call",
 			);

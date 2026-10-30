@@ -137,6 +137,109 @@ async function fixture(model: typeof fetch, execute?: ToolExecutor) {
 	};
 }
 
+for (const mode of ["allow", "block", "failure", "disabled"] as const) {
+	test(`MCP diagnostics obey universal review with ${mode} and preserve unconfigured identity`, async () => {
+		let tasks = 0;
+		let reviews = 0;
+		const f = await fixture(async (url, init) => {
+			const body = JSON.parse(String(init?.body));
+			if (String(url) === decisionUrl) {
+				reviews++;
+				assert.equal(body.state.name, "mcp_diagnostics");
+				assert.deepEqual(body.state.arguments, {
+					service_id: "not-configured",
+				});
+				return mode === "failure"
+					? Response.json({ error: "controlled" }, { status: 503 })
+					: decision(mode);
+			}
+			if (++tasks === 1)
+				return completedResponse({
+					output: [
+						{
+							type: "function_call",
+							name: "mcp_diagnostics",
+							call_id: "diagnostics",
+							arguments: '{"service_id":"not-configured"}',
+						},
+					],
+				});
+			const result = body.input.find(
+				(item: { type: string }) => item.type === "function_call_output",
+			);
+			assert(result);
+			if (mode === "allow" || mode === "disabled")
+				assert.deepEqual(JSON.parse(result.output), {
+					services: [{ id: "not-configured", configured: false }],
+				});
+			else {
+				assert(!result.output.includes('"services"'));
+				assert.match(result.output, /Jev safety review/);
+			}
+			return answer();
+		});
+		try {
+			if (mode === "disabled")
+				await f.request("/api/safety-review", "PATCH", { safetyReview: false });
+			assert.equal((await f.wait(await f.ask())).status, "succeeded");
+			assert.equal(tasks, 2);
+			assert.equal(reviews, mode === "disabled" ? 0 : 1);
+		} finally {
+			await f.close();
+		}
+	});
+}
+
+test("operational database policy is decided by Jev while project and isolated test databases remain permitted", async () => {
+	let requests = 0;
+	let reviews = 0;
+	const executed: string[] = [];
+	const f = await fixture(
+		async (url, init) => {
+			const body = JSON.parse(String(init?.body));
+			if (String(url) === decisionUrl) {
+				reviews++;
+				assert(
+					body.questions.safety.instructions.includes(
+						JSON.stringify(f.databasePath),
+					),
+				);
+				return decision(reviews === 1 ? "block" : "allow");
+			}
+			if (++requests === 1)
+				return completedResponse({
+					output: [
+						f.databasePath,
+						"/project/application.sqlite",
+						"/isolated-test/fixture.sqlite",
+					].map((path, index) => ({
+						type: "function_call",
+						name: "read_file",
+						call_id: `database-${index}`,
+						arguments: JSON.stringify({
+							path,
+						}),
+					})),
+				});
+			return answer();
+		},
+		async (_name, args) => {
+			executed.push(args);
+			return { status: "succeeded", result: "1" };
+		},
+	);
+	try {
+		assert.equal((await f.wait(await f.ask())).status, "succeeded");
+		assert.equal(reviews, 3);
+		assert.equal(executed.length, 2);
+		assert(executed[0].includes("/project/application.sqlite"));
+		assert(executed[1].includes("/isolated-test/fixture.sqlite"));
+		assert(executed.every((args) => !args.includes(f.databasePath)));
+	} finally {
+		await f.close();
+	}
+});
+
 test("default safety review records ordinary calls, permits direct allow and keeps Decisions out of task continuation", async () => {
 	const http: { url: string; body: Record<string, unknown> }[] = [];
 	const executed: string[] = [];
@@ -151,6 +254,23 @@ test("default safety review records ordinary calls, permits direct allow and kee
 			);
 			if (String(url) === decisionUrl) {
 				assert.equal(body.model, "~typesafe/jev-latest");
+				assert.match(
+					body.questions.safety.instructions,
+					/Agents must use supported Weft tools/,
+				);
+				assert.match(
+					body.questions.safety.instructions,
+					/directly reading, querying, copying, or modifying Weft's operational database/,
+				);
+				assert(
+					body.questions.safety.instructions.includes(
+						JSON.stringify(f.databasePath),
+					),
+				);
+				assert.match(
+					body.questions.safety.instructions,
+					/Ordinary project databases and isolated test databases/,
+				);
 				assert.match(JSON.stringify(body), /\/controlled\/file-0/);
 				assert(!JSON.stringify(body).includes("PRIVATE TASK CONTEXT"));
 				return decision();
