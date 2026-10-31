@@ -57,10 +57,10 @@ pnpm exec tsc --ignoreConfig --noEmit --target es2022 --module nodenext --allowI
 
 实际配置模型 `z-ai/glm-5.3-flash`，model-default effort、OpenRouter default 路由；Jev 开启，实际解析为 `typesafe/jev-1.14-20261014`。每次使用独立空白隔离 Weft server／数据库，不打开浏览器或创建可见的用户 Chat。故障来自仅第一次启动失败的受控 wrapper；随后运行真实 Jira Docker MCP。完整真实工具目录和原始允许响应保留。
 
-| 条件 | 实际 Tool Call 顺序 | 结果 | Model Call（任务／Jev） | 返回 input／output tokens | 返回 cost（USD） |
-| --- | --- | --- | --- | --- | --- |
-| 原保存 `TOOLSETS=jira` | diagnostics → startup → diagnostics → diagnostics | 客户端连接成功但零工具，未执行 Jira search | 9（5／4） | 29,393／3,957 | 0.005423022 |
-| 仅隔离副本改为 `TOOLSETS=all` | `mcp_diagnostics` → `mcp_startup` → `mcp_tool_5`（实际 `jira_search`） | 三次 Tool Call 均 succeeded，Agent succeeded；先前受控启动错误已被诊断观察 | 7（4／3） | 50,426／1,743 | 0.008100780 |
+| 条件                          | 实际 Tool Call 顺序                                                    | 结果                                                                       | Model Call（任务／Jev） | 返回 input／output tokens | 返回 cost（USD） |
+| ----------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------- | ----------------------- | ------------------------- | ---------------- |
+| 原保存 `TOOLSETS=jira`        | diagnostics → startup → diagnostics → diagnostics                      | 客户端连接成功但零工具，未执行 Jira search                                 | 9（5／4）               | 29,393／3,957             | 0.005423022      |
+| 仅隔离副本改为 `TOOLSETS=all` | `mcp_diagnostics` → `mcp_startup` → `mcp_tool_5`（实际 `jira_search`） | 三次 Tool Call 均 succeeded，Agent succeeded；先前受控启动错误已被诊断观察 | 7（4／3）               | 50,426／1,743             | 0.008100780      |
 
 两次真实运行共 16 个 Model Call，返回 cost 合计 **0.013523802 USD**。此前 Docker／Origin 设置阶段失败均在模型请求前，零额外付费 Model Call。实际 Jev 对每个已执行 Tool Call 各审核一次；此次允许结果不证明一般风险分类质量。
 
@@ -69,5 +69,4 @@ pnpm exec tsc --ignoreConfig --noEmit --target es2022 --module nodenext --allowI
 实际 image 为 MCP Atlassian **0.21.1**（revision `4e2b836a89dca2fc374133acca0d793f6b29f50c`）。其[固定版本配置说明](https://github.com/sooperset/mcp-atlassian/blob/4e2b836a89dca2fc374133acca0d793f6b29f50c/.env.example#L148-L158) 明确：未知 toolset 被忽略、全部未知时 fail-closed 零工具；`jira` 不是已知组，`all` 是受支持别名。[固定工具表](https://github.com/sooperset/mcp-atlassian/blob/4e2b836a89dca2fc374133acca0d793f6b29f50c/docs/tools-reference.mdx#L53-L70) 定义 `jira_issues` 等组。仅改隔离副本后，独立真实发现得到 **49 个 Jira 工具、包含 jira_search、无 Confluence／其他工具**。新 Jira 模板已改为 `all` 并有 en／zh 设置回归；已有保存行不被覆盖。**用户原保存服务仍为 `TOOLSETS=jira`，需用户在 Settings 改为 `all` 或受支持组后才具备工具。**
 
 真实 Jira 认证／搜索、真实任务模型和真实 Jev 通信已验证；首次失败及恢复触发为受控服务行为，不证明真实 Colima 停机恢复或模型无提示自主诊断。凭据／临时输入／快照与隔离数据库均已删除，未保留 Jira 输出正文。未进行 Jira 写入、外部 HTTP MCP 验收或一般 Jev 分类实验。
-
 - 已知原生 shell 取消竞态 [#193](https://github.com/tylerlong/weft/issues/193) 不属于此次修复；先前阶段曾复现，后续通过不表示已修复。

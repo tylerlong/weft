@@ -1502,7 +1502,8 @@ commandTest(
 		root = f.root;
 		try {
 			const id = await f.ask();
-			await f.wait(id);
+			const agent = await f.wait(id);
+			assert.equal(agent.status, "succeeded", JSON.stringify(agent));
 			assert.equal(requests, 5);
 		} finally {
 			await f.close();
