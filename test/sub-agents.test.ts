@@ -1992,14 +1992,15 @@ for (const maskKeys of [false, true]) {
 			const service = jiraMcpService();
 			service.enabled = false;
 			service.env.push(
-				{ name: "ESCAPED_SECRET", value: secret },
-				{ name: "PATH_SECRET", value: "jira" },
+				{ name: "ESCAPED_SECRET", value: secret, secret: true },
+				{ name: "PATH_SECRET", value: "jira", secret: true },
 			);
 			if (maskKeys)
 				service.env.push(
 					...["prompt", "model_id", "high"].map((value, index) => ({
 						name: `KEY_${index}`,
 						value,
+						secret: true,
 					})),
 				);
 			assert.equal(
@@ -2092,7 +2093,7 @@ for (const maskKeys of [false, true]) {
 	});
 }
 
-test("ordinary MCP env values preserve accepted answers, child notifications and later Root history", async () => {
+test("Secret-marked MCP values preserve accepted answers, child notifications and later Root history", async () => {
 	let terminal = "";
 	let nextInput: { role?: string; content?: string }[] = [];
 	const f = await fixture(async (_url, init) => {
@@ -2154,7 +2155,11 @@ test("ordinary MCP env values preserve accepted answers, child notifications and
 				"model",
 				"arguments",
 				"refusal",
-			].map((value, index) => ({ name: `STRUCTURE_${index}`, value })),
+			].map((value, index) => ({
+				name: `STRUCTURE_${index}`,
+				value,
+				secret: true,
+			})),
 		);
 		assert.equal(
 			(await f.put("/api/mcp-settings", { services: [service] })).status,
@@ -2225,8 +2230,8 @@ for (const invalidRootStatus of [false, true]) {
 			const service = jiraMcpService();
 			service.enabled = false;
 			service.env.push(
-				{ name: "STATUS_SECRET", value: "completed" },
-				{ name: "PART_SECRET", value: "output_text" },
+				{ name: "STATUS_SECRET", value: "completed", secret: true },
+				{ name: "PART_SECRET", value: "output_text", secret: true },
 			);
 			assert.equal(
 				(await f.put("/api/mcp-settings", { services: [service] })).status,
@@ -2250,14 +2255,14 @@ for (const invalidRootStatus of [false, true]) {
 	});
 }
 
-test("Root submission masks configured env values without changing active execution or images", {
+test("Root submission masks Secret-marked env values without changing active execution or images", {
 	timeout: 10000,
 }, async () => {
 	const secret = 'quoted "credential"\nline';
 	const escaped = JSON.stringify(secret).slice(1, -1);
 	const prompt = `Inspect src/jira.ts false ${secret}\nLiteral ${escaped} delegation-api-key`;
 	const masked =
-		"Inspect src/[REDACTED].ts [REDACTED] [REDACTED]\nLiteral [REDACTED] [REDACTED]";
+		"Inspect src/[REDACTED].ts false [REDACTED]\nLiteral [REDACTED] [REDACTED]";
 	const image = {
 		type: "input_image",
 		image_url:
@@ -2299,9 +2304,9 @@ test("Root submission masks configured env values without changing active execut
 		const service = jiraMcpService();
 		service.enabled = false;
 		service.env.push(
-			{ name: "ESCAPED", value: secret },
-			{ name: "PATH_SECRET", value: "jira" },
-			{ name: "PIXEL", value: "iVBOR" },
+			{ name: "ESCAPED", value: secret, secret: true },
+			{ name: "PATH_SECRET", value: "jira", secret: true },
+			{ name: "PIXEL", value: "iVBOR", secret: true },
 		);
 		assert.equal(
 			(await f.put("/api/mcp-settings", { services: [service] })).status,
@@ -2350,7 +2355,7 @@ test("Root submission masks configured env values without changing active execut
 		).id;
 		assert.equal(
 			(await f.get(`/api/agents/${childId}`)).agents[0].question,
-			"Inspect [REDACTED] [REDACTED]",
+			"Inspect [REDACTED] false",
 		);
 		await f.restart();
 		assert.equal(

@@ -1930,12 +1930,7 @@ export function createServer(
 	) => {
 		const config = validateRoot(id, input.images);
 		if (busy.has(id)) throw new InputError("chatBusy");
-		const secrets = [
-			config.apiKey,
-			...readMcpServices().flatMap((service) =>
-				service.env.map(({ value }) => value),
-			),
-		]
+		const secrets = [config.apiKey, ...mcpSecrets(readMcpServices())]
 			.flatMap((key) => [key, JSON.stringify(key).slice(1, -1)])
 			.filter(Boolean);
 		const question = secrets.reduce(

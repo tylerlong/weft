@@ -14,23 +14,11 @@ export const mcpDiagnosticsTool = {
 };
 
 export function mcpSecrets(services: McpService[]): string[] {
-	return services.flatMap((service) => {
-		const config = parseMcpConfig(service.config);
-		return [
-			...service.env.map(({ value }) => value),
-			...("url" in config
-				? [
-						...Object.values(config.http_headers).flatMap((value) => [
-							value,
-							value.replace(/^\S+\s+/, ""),
-						]),
-						...new URLSearchParams(
-							config.url.split("?", 2)[1]?.split("#", 1)[0],
-						).values(),
-					]
-				: []),
-		].filter(Boolean);
-	});
+	return services.flatMap((service) =>
+		service.env
+			.filter(({ secret, value }) => secret === true && value !== "")
+			.map(({ value }) => value),
+	);
 }
 
 export function mcpDiagnostics(

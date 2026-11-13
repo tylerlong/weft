@@ -3,7 +3,7 @@ export type McpService = {
 	name: string;
 	enabled: boolean;
 	config: string;
-	env: { name: string; value: string }[];
+	env: { name: string; value: string; secret?: boolean }[];
 };
 export type McpConfig = { startup_timeout_sec: number } & (
 	| { command: string; args: string[] }
@@ -120,11 +120,14 @@ export function validateMcpServices(value: unknown): McpService[] {
 			if (
 				!variable ||
 				typeof variable !== "object" ||
-				Object.keys(variable).some((key) => !["name", "value"].includes(key)) ||
+				Object.keys(variable).some(
+					(key) => !["name", "value", "secret"].includes(key),
+				) ||
 				typeof variable.name !== "string" ||
 				!/^[A-Za-z_][A-Za-z0-9_]*$/.test(variable.name) ||
 				names.has(variable.name) ||
-				typeof variable.value !== "string"
+				typeof variable.value !== "string" ||
+				(variable.secret !== undefined && typeof variable.secret !== "boolean")
 			)
 				throw new Error("Invalid or duplicate MCP environment name");
 			names.add(variable.name);
@@ -161,7 +164,7 @@ export const jiraMcpService = (): McpService => ({
 	),
 	env: [
 		{ name: "JIRA_URL", value: "" },
-		{ name: "JIRA_PERSONAL_TOKEN", value: "" },
+		{ name: "JIRA_PERSONAL_TOKEN", value: "", secret: true },
 		{ name: "TOOLSETS", value: "all" },
 		{ name: "READ_ONLY_MODE", value: "false" },
 	],

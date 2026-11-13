@@ -563,7 +563,9 @@ for (const action of [
 				startup_timeout_sec: 1,
 				http_headers: { Authorization: "Bearer <TOKEN>" },
 			}),
-			env: [{ name: "TOKEN", value: "startup-private-credential" }],
+			env: [
+				{ name: "TOKEN", value: "startup-private-credential", secret: true },
+			],
 		};
 		const f = await fixture(
 			(request) => {
@@ -766,7 +768,7 @@ test("startup review keeps arbitrary argv credentials opaque and describes full 
 				],
 				startup_timeout_sec: 2,
 			}),
-			env: [{ name: "LABEL", value: "private-label-value" }],
+			env: [{ name: "LABEL", value: "private-label-value", secret: true }],
 		};
 		await f.send("/api/mcp-settings", { services: [service] }, "PUT");
 		assert.equal((await f.run()).status, "succeeded");

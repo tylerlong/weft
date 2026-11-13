@@ -13,6 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { setTimeout } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import type { McpService } from "../src/mcp-config.ts";
 import { waitForAgent } from "./agent-fixture.ts";
 import { createTestServer } from "./config-fixture.ts";
 import { localFetch as fetch } from "./local-fetch.ts";
@@ -90,7 +91,7 @@ async function fixture(
 	const chat = await send(`/api/projects/${project.id}/chats`, {
 		name: "external tools",
 	});
-	const service = (id: string, name = id) => ({
+	const service = (id: string, name = id): McpService => ({
 		id,
 		name,
 		enabled: true,
@@ -103,7 +104,13 @@ async function fixture(
 			],
 			startup_timeout_sec: 5,
 		}),
-		env: [{ name: "WEFT_MCP_FIXTURE_VALUE", value: "controlled-value" }],
+		env: [
+			{
+				name: "WEFT_MCP_FIXTURE_VALUE",
+				value: "controlled-value",
+				secret: true,
+			},
+		],
 	});
 	const logs = async (): Promise<Log[]> => {
 		try {
@@ -1268,7 +1275,7 @@ test("MCP JSON placeholders expand once after parsing and preserve stored creden
 		service.env = [
 			{ name: "LABEL", value: "<OTHER>" },
 			{ name: "OTHER", value: "must-not-expand" },
-			{ name: "WEFT_MCP_FIXTURE_VALUE", value: secret },
+			{ name: "WEFT_MCP_FIXTURE_VALUE", value: secret, secret: true },
 		];
 		await f.settings([service]);
 		const saved = await (await fetch(`${f.base}/api/mcp-settings`)).json();
@@ -1417,7 +1424,7 @@ test("credential redaction keeps JSON booleans, schemas and image bytes valid", 
 			{ name: "ESCAPED", value: 'quoted "value"\nline' },
 			{ name: "PIXEL", value: "AA" },
 			{ name: "WEFT_MCP_FIXTURE_VALUE", value: "false" },
-		];
+		].map((variable) => ({ ...variable, secret: true }));
 		await f.settings([service]);
 		const id = await f.start();
 		const agent = await waitForAgent(f.base, id);
@@ -1575,7 +1582,11 @@ test("stderr preserves split UTF8 and withholds incomplete credentials from diag
 	};
 	try {
 		const service = f.service("stderr");
-		service.env.push({ name: "WEFT_MCP_STDERR_TEST_SECRET", value: secret });
+		service.env.push({
+			name: "WEFT_MCP_STDERR_TEST_SECRET",
+			value: secret,
+			secret: true,
+		});
 		await f.settings([service]);
 		id = await f.start();
 		await accepted;
@@ -2295,6 +2306,119 @@ test("Sub-agent replacement leaves the Root's captured client and tools intact",
 			new Set(["original", "replacement"]),
 		);
 		assert.equal(new Set(business.map((row) => row.pid)).size, 2);
+	} finally {
+		await f.close();
+	}
+});
+
+test("unchecked MCP configuration stays readable in Root and model records", async () => {
+	const text = "use jira MCP all false literal-header literal-query";
+	const f = await fixture((request) => {
+		assert.equal(request.input.at(-1)?.content, text);
+		return [{ type: "message", content: [{ type: "output_text", text }] }];
+	});
+	try {
+		await f.settings([
+			{
+				...f.service("readable"),
+				enabled: false,
+				config: JSON.stringify({
+					url: "https://example.invalid/mcp?token=literal-query",
+					http_headers: { Authorization: "Bearer literal-header" },
+				}),
+				env: [
+					{ name: "TOOLSETS", value: "jira" },
+					{ name: "READ_ONLY_MODE", value: "false" },
+					{ name: "MODE", value: "all" },
+				],
+			},
+		]);
+		const chat = await f.send(`/api/projects/${f.projectId}/chats`, {
+			name: "redaction",
+		});
+		const { agentId } = await f.send(`/api/chats/${chat.id}`, { prompt: text });
+		const agent = await waitForAgent(f.base, agentId);
+		assert.equal(agent.status, "succeeded");
+		assert.equal(agent.question, text);
+		assert.equal(agent.answer, text);
+		const { calls } = await (
+			await fetch(`${f.base}/api/agents/${agentId}/calls`)
+		).json();
+		assert.match(
+			calls[0].requestBody,
+			/use jira MCP all false literal-header literal-query/,
+		);
+		assert.match(
+			calls[0].responseBody,
+			/use jira MCP all false literal-header literal-query/,
+		);
+	} finally {
+		await f.close();
+	}
+});
+
+test("MCP Secret flags validate and control saved questions and answers for both transports", async () => {
+	const text = "jira credential credential";
+	const f = await fixture((request) => {
+		assert.equal(request.input.at(-1)?.content, text);
+		return [{ type: "message", content: [{ type: "output_text", text }] }];
+	});
+	try {
+		for (const http of [false, true])
+			for (const secret of [false, true]) {
+				const service = {
+					...f.service("classified"),
+					enabled: false,
+					config: http
+						? JSON.stringify({
+								url: "https://example.invalid/<PUBLIC>?token=<TOKEN>",
+								http_headers: { Authorization: "Bearer <TOKEN>" },
+							})
+						: f.service("classified").config,
+					env: [
+						{ name: "PUBLIC", value: "jira", secret: false },
+						{ name: "TOKEN", value: "credential", secret },
+						{ name: "EMPTY", value: "", secret: true },
+					],
+				};
+				await f.settings([service]);
+				const saved = await (await fetch(`${f.base}/api/mcp-settings`)).json();
+				assert.deepEqual(saved.services, [service]);
+				for (const invalid of ["true", null, 1]) {
+					const response = await fetch(`${f.base}/api/mcp-settings`, {
+						method: "PUT",
+						body: JSON.stringify({
+							services: [
+								{
+									...service,
+									env: [
+										{ name: "TOKEN", value: "credential", secret: invalid },
+									],
+								},
+							],
+						}),
+					});
+					assert.equal(response.status, 400);
+				}
+				const chat = await f.send(`/api/projects/${f.projectId}/chats`, {
+					name: "classified",
+				});
+				const { agentId } = await f.send(`/api/chats/${chat.id}`, {
+					prompt: text,
+				});
+				const agent = await waitForAgent(f.base, agentId);
+				const expected = secret ? "jira [REDACTED] [REDACTED]" : text;
+				assert.equal(agent.status, "succeeded");
+				assert.equal(agent.question, expected);
+				assert.equal(agent.answer, expected);
+				const { calls } = await (
+					await fetch(`${f.base}/api/agents/${agentId}/calls`)
+				).json();
+				assert.equal(
+					JSON.parse(calls[0].requestBody).input.at(-1).content,
+					expected,
+				);
+			}
 	} finally {
 		await f.close();
 	}

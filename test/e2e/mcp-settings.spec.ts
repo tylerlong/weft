@@ -691,3 +691,94 @@ test("Settings URL and masked token save through to an actual HTTP model tool ca
 		await peer.close();
 	}
 });
+
+for (const chinese of [false, true]) {
+	test(`MCP Secret classification persists independently of visibility (${chinese ? "zh" : "en"})`, async ({
+		page,
+		app,
+	}) => {
+		if (chinese)
+			await page.request.put(`${app.url}/api/language`, {
+				data: { language: "zh-CN" },
+			});
+		const service = jiraMcpService();
+		service.enabled = false;
+		service.env = [{ name: "TOKEN", value: "existing-token" }];
+		await page.request.put(`${app.url}/api/mcp-settings`, {
+			data: { services: [service] },
+		});
+		await page.goto(app.url);
+		const settings = page.getByRole("button", {
+			name: chinese ? "设置" : "Settings",
+			exact: true,
+		});
+		await settings.click();
+		const dialog = page.getByRole("dialog", {
+			name: chinese ? "设置" : "Settings",
+			exact: true,
+		});
+		await dialog.getByRole("tab", { name: "MCP", exact: true }).click();
+		const panel = dialog.getByRole("tabpanel", { name: "MCP", exact: true });
+		const secret = panel.getByRole("checkbox", {
+			name: chinese ? "秘密" : "Secret",
+			exact: true,
+		});
+		await expect(secret).not.toBeChecked();
+		await secret.focus();
+		await page.keyboard.press("Space");
+		await expect(secret).toBeChecked();
+		await expect
+			.poll(
+				async () =>
+					(await (await page.request.get(`${app.url}/api/mcp-settings`)).json())
+						.services[0].env[0].secret,
+			)
+			.toBe(true);
+		await dialog
+			.getByRole("button", { name: chinese ? "关闭" : "Close", exact: true })
+			.click();
+		await app.restart();
+		await page.goto(app.url);
+		await settings.click();
+		await dialog.getByRole("tab", { name: "MCP", exact: true }).click();
+		await expect(secret).toBeChecked();
+		await panel
+			.getByRole("button", {
+				name: chinese ? "显示 Jira 的值" : "Show values for Jira",
+				exact: true,
+			})
+			.click();
+		await expect(secret).toBeChecked();
+		await secret.uncheck();
+		await expect
+			.poll(
+				async () =>
+					(await (await page.request.get(`${app.url}/api/mcp-settings`)).json())
+						.services[0].env[0].secret,
+			)
+			.toBe(false);
+		await panel
+			.getByRole("button", {
+				name: chinese ? "添加环境变量" : "Add environment variable",
+				exact: true,
+			})
+			.click();
+		await expect(secret.nth(1)).not.toBeChecked();
+		await panel
+			.getByRole("button", {
+				name: chinese ? "移除服务" : "Remove service",
+				exact: true,
+			})
+			.click();
+		await panel
+			.getByRole("button", {
+				name: chinese ? "添加 Jira 模板" : "Add Jira template",
+				exact: true,
+			})
+			.click();
+		await expect(secret).toHaveCount(4);
+		for (const index of [0, 2, 3])
+			await expect(secret.nth(index)).not.toBeChecked();
+		await expect(secret.nth(1)).toBeChecked();
+	});
+}

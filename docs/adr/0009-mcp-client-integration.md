@@ -87,3 +87,10 @@ Docker 不可达时，按 Docker 的 host／context 选择规则读取 endpoint�
 准备、等待共享启动、子进程、Docker 就绪轮询、MCP 初始化及全部发现共用服务启动总时限与取消信号。相同本地 profile 的并发 Agent 串行确认启动；等待者取消不释放仍在执行的启动，执行者取消后等待者重新检查实际 daemon／profile 状态。取消终止所属准备进程组，必要时升级到强制终止，但不调用 `colima stop`／`delete`；已启动的共享 runtime 不是 Agent 资源，不回滚真实外部效果。启动请求与完成事实、实际 stderr 及失败进入原 MCP 运行诊断。只有 Docker 实际就绪后才进入发现，之后的业务 Tool Call 仍由模型显式选择。
 
 显式启动仍只接受一次普通 Jev 审核，已有说明涵盖可能启动停止的 Colima profile；内部确定性步骤不增加 Model Call，自动初始化不变成 Tool Call。受控可执行文件和临时服务器覆盖启动、失败、时限、取消、并发隔离、同一 Agent 恢复与审核计数；未操作用户真实 Docker／Colima，也未据此声称真实 Jira／付费模型验收通过，后者仍由 #217 单独执行。[Colima start 参数](https://github.com/abiosoft/colima/blob/main/cmd/start.go)、[list JSON](https://github.com/abiosoft/colima/blob/main/cmd/list.go) 和 [Docker endpoint 选择规则](https://docs.docker.com/reference/cli/docker/) 是上述 CLI 约定的依据。
+
+
+## 2026-11-13 环境变量 Secret 标记
+
+MCP 环境变量的名称／值旁增加持久保存的 Secret 勾选框，沿用 Settings 自动保存、无效草稿与失败重试规则，提供中英文标签及帮助。Secret 与每个服务临时的显示／隐藏状态独立，服务禁用也可编辑。自定义新变量和缺少标记的已有变量默认不勾选，不按变量名猜测；新建 Jira 模板仅为 `JIRA_PERSONAL_TOKEN` 勾选，不为 URL、TOOLSETS 或 READ_ONLY_MODE 勾选，也不改写已有服务。
+
+stdio 与 HTTP 使用同一分类：记录脱敏仅收集勾选变量的非空值。HTTP 凭据放入勾选 Secret 的变量，通过既有 `<变量名>` 单次引用；不再自动收集字面 HTTP header 值、去除认证方案后的 header 值或 URL query 值，也不从解析后的 HTTP 配置重新加入未勾选值。直接写入 JSON 的字面凭据仍允许使用，但不因所在字段而获得自动脱敏。Secret 不是加密或访问控制，不改变 MCP 实际输入、生命周期或诊断能力；诊断仍不导出环境变量值及 HTTP header 值，endpoint 仍省略 query／fragment。记录与历史边界见 [ADR 0001](0001-agent-and-call-ownership.md#2026-11-13-显式-secret-分类)。

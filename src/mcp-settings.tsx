@@ -261,6 +261,24 @@ export function McpSettings({
 									onBlur={() => void commit()}
 								/>
 							</label>
+							<label className="flex items-center gap-2 py-2">
+								<input
+									type="checkbox"
+									disabled={!ready}
+									checked={variable.secret ?? false}
+									onChange={(event) => {
+										change(row.id, {
+											env: row.env.map((item, i) =>
+												i === envIndex
+													? { ...item, secret: event.target.checked }
+													: item,
+											),
+										});
+										void commit();
+									}}
+								/>
+								{t("mcpEnvSecret")}
+							</label>
 							<button
 								disabled={!ready}
 								type="button"
