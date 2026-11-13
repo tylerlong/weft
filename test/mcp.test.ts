@@ -2423,3 +2423,76 @@ test("MCP Secret flags validate and control saved questions and answers for both
 		await f.close();
 	}
 });
+
+test("active HTTP MCP preserves auth and applies explicit classification to saved round trips", async () => {
+	const peer = await httpMcpFixture();
+	let requests = 0;
+	const text = "credential jira literal-header literal-query";
+	const f = await fixture((request) => {
+		if (++requests === 1)
+			return [
+				{
+					type: "function_call",
+					name: request.tools.find((item) =>
+						item.description?.includes("controlled HTTP tool"),
+					)?.name,
+					call_id: "classified-http",
+					arguments: JSON.stringify({ mode: "mixed", payload: { text } }),
+				},
+			];
+		assert.match(
+			JSON.stringify(request.input),
+			/credential jira literal-header literal-query/,
+		);
+		return [{ type: "message", content: [{ type: "output_text", text }] }];
+	});
+	try {
+		await f.settings([
+			{
+				...f.service("http"),
+				config: JSON.stringify({
+					url: `${peer.url}/?token=literal-query&mode=<MODE>`,
+					http_headers: {
+						Authorization: "Bearer <TOKEN>",
+						"x-public": "<MODE>",
+						"x-literal": "literal-header",
+					},
+				}),
+				env: [
+					{ name: "TOKEN", value: "credential", secret: true },
+					{ name: "MODE", value: "jira", secret: false },
+				],
+			},
+		]);
+		const id = await f.start();
+		const agent = await waitForAgent(f.base, id);
+		assert.equal(agent.status, "succeeded");
+		assert.equal(agent.answer, "[REDACTED] jira literal-header literal-query");
+		const sent = peer.requests.find((item) => item.method === "tools/call");
+		assert(sent);
+		assert.equal(sent.headers.authorization, "Bearer credential");
+		assert.equal(sent.headers["x-public"], "jira");
+		assert.equal(sent.headers["x-literal"], "literal-header");
+		assert.deepEqual(sent.params?.arguments.payload, { text });
+		const { toolCalls } = await (
+			await fetch(`${f.base}/api/agents/${id}/tools`)
+		).json();
+		assert.doesNotMatch(toolCalls[0].arguments, /credential/);
+		assert.match(toolCalls[0].arguments, /jira literal-header literal-query/);
+		const detail = await (
+			await fetch(`${f.base}/api/agents/${id}/tools?toolId=${toolCalls[0].id}`)
+		).json();
+		assert.doesNotMatch(detail.toolCalls[0].result, /credential/);
+		assert.match(
+			detail.toolCalls[0].result,
+			/jira literal-header literal-query/,
+		);
+		const { calls } = await (
+			await fetch(`${f.base}/api/agents/${id}/calls`)
+		).json();
+		assert.doesNotMatch(JSON.stringify(calls), /credential/);
+	} finally {
+		await f.close();
+		await peer.close();
+	}
+});
