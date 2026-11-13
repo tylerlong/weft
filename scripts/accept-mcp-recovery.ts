@@ -561,7 +561,7 @@ async function accept(interruption: AbortSignal) {
 		});
 		const accepted = await send(`/api/chats/${chat.id}`, {
 			prompt:
-				"Perform this bounded read-only acceptance exercise. First call mcp_diagnostics to inspect this Agent's MCP runtime. The configured Jira service initially failed in an isolated controlled launch wrapper; use mcp_startup with its stable service_id to recover in this SAME Agent. Then explicitly call the discovered jira_search to list up to 5 tickets assigned to currentUser() updated in the past 24 hours, returning keys and summaries. Do not call any other tools, create sub-agents, access files/databases, modify Settings, run commands, write to Jira, or start/restart infrastructure. Stop and accurately report any unresolved failure; do not invent success. This is an explicitly requested diagnostics/startup/search sequence for acceptance, not an autonomous discovery test.",
+				"Perform this bounded read-only acceptance exercise. First call mcp_diagnostics to inspect this Agent's MCP runtime. Initially the service must be not_started. Explicitly call mcp_startup with its stable service_id; that first launch intentionally fails in an isolated controlled wrapper. Call mcp_diagnostics again to inspect that controlled failure, then explicitly call mcp_startup again to recover in this SAME Agent. Then explicitly call the discovered jira_search to list up to 5 tickets assigned to currentUser() updated in the past 24 hours, returning keys and summaries. Do not call any other tools, create sub-agents, access files/databases, modify Settings, run commands, write to Jira, or start/restart infrastructure. Stop and accurately report any unresolved failure; do not invent success. This is an explicitly requested diagnostics/startup/diagnostics/recovery/search sequence for acceptance, not an autonomous discovery test.",
 		});
 		readSequence = async () => {
 			const response = await fetch(
@@ -593,8 +593,22 @@ async function accept(interruption: AbortSignal) {
 		assert.equal(state.agents[0].status, "succeeded", "Agent did not complete");
 		assert.equal(sequence[0]?.name, "mcp_diagnostics");
 		assert(
-			JSON.stringify(toolCalls[0].result).includes(
-				"Controlled acceptance-only initial MCP failure",
+			JSON.stringify(toolCalls[0].result).includes("not_started"),
+			"Initial diagnostics did not report idle service",
+		);
+		assert(
+			sequence.some(
+				(item) => item.name === "mcp_startup" && item.status === "failed",
+			),
+			"Controlled explicit first startup did not fail",
+		);
+		assert(
+			toolCalls.some(
+				(item: { name: string; result: unknown }) =>
+					item.name === "mcp_diagnostics" &&
+					JSON.stringify(item.result).includes(
+						"Controlled acceptance-only initial MCP failure",
+					),
 			),
 			"Diagnostics did not expose the controlled initial failure",
 		);

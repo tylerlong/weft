@@ -30,6 +30,7 @@ type Request = {
 	tools: Tool[];
 	input: {
 		type?: string;
+		call_id?: string;
 		output?: unknown;
 		role?: string;
 		content?: unknown;
@@ -55,16 +56,38 @@ const call = (tool: Tool, id: string, mode = "mixed") => ({
 
 async function fixture(
 	model: (request: Request) => Promise<unknown[]> | unknown[],
+	activateServices = true,
 ) {
 	const directory = await mkdtemp(join(tmpdir(), "mcp-http-"));
 	const path = join(directory, "db.sqlite");
 	const logPath = join(directory, "service.jsonl");
+	let services: McpService[] = [];
+	// Legacy protocol scenarios explicitly select their configured services before
+	// exercising business behavior. Idle-catalog scenarios opt out of this model script.
+	const respond = async (request: Request) => {
+		if (
+			activateServices &&
+			!request.input.some((item) => item.type === "function_call_output")
+		) {
+			const enabled = services.filter((service) => service.enabled);
+			if (enabled.length) {
+				assert(
+					!request.tools.some((tool) => tool.name.startsWith("mcp_tool_")),
+					"Every fresh Agent starts without inherited MCP tools",
+				);
+				return enabled.map((service) =>
+					startupCall(service.id, `fixture-start-${service.id}`),
+				);
+			}
+		}
+		return model(request);
+	};
 	const server = createTestServer(
 		async (_url, init) =>
 			new Response(
 				completedBody({
 					status: "completed",
-					output: await model(JSON.parse(String(init?.body))),
+					output: await respond(JSON.parse(String(init?.body))),
 				}),
 				{ headers: { "content-type": "text/event-stream" } },
 			),
@@ -132,8 +155,15 @@ async function fixture(
 		service,
 		logs,
 		send,
-		settings: (services: ReturnType<typeof service>[]) =>
-			send("/api/mcp-settings", { services }, "PUT"),
+		settings: async (saved: ReturnType<typeof service>[]) => {
+			const result = await send(
+				"/api/mcp-settings",
+				{ services: saved },
+				"PUT",
+			);
+			services = saved;
+			return result;
+		},
 		start: async (chatId = chat.id) =>
 			(await send(`/api/chats/${chatId}`, { prompt: "use MCP" }))
 				.agentId as number,
@@ -228,6 +258,85 @@ async function dockerFixture(
 				.map((line) => JSON.parse(line)),
 	};
 }
+
+test("unused enabled MCP services stay idle and expose only catalog metadata", async () => {
+	const peer = await httpMcpFixture();
+	let runtime!: Awaited<ReturnType<typeof dockerFixture>>;
+	const f = await fixture(async (request) => {
+		assert(!request.tools.some((tool) => tool.name.startsWith("mcp_tool_")));
+		assert.match(request.instructions ?? "", /unused-stdio/);
+		assert.match(request.instructions ?? "", /unused-http/);
+		assert.equal((await f.logs()).length, 0);
+		assert.equal(peer.requests.length, 0);
+		assert.deepEqual(await runtime.logs(), []);
+		assert(!(request.instructions ?? "").includes("controlled-value"));
+		return [answer];
+	}, false);
+	try {
+		runtime = await dockerFixture(f);
+		await f.settings([
+			f.service("unused-stdio"),
+			{
+				...f.service("unused-http"),
+				config: JSON.stringify({ url: peer.url }),
+				env: [],
+			},
+			runtime.service,
+		]);
+		assert.equal(
+			(await waitForAgent(f.base, await f.start())).status,
+			"succeeded",
+		);
+		assert.deepEqual(await f.logs(), []);
+		assert.deepEqual(peer.requests, []);
+	} finally {
+		await f.close();
+		await peer.close();
+	}
+});
+
+test("model selects one service and reuses it while other enabled services stay idle", async () => {
+	let requests = 0;
+	const peer = await httpMcpFixture();
+	const f = await fixture(async (request) => {
+		requests++;
+		assert.match(request.instructions ?? "", /selected-service/);
+		assert.match(request.instructions ?? "", /unselected-http/);
+		if (requests === 1) {
+			assert(!request.tools.some((tool) => tool.name.startsWith("mcp_tool_")));
+			assert.deepEqual(await f.logs(), []);
+			return [startupCall("selected-service")];
+		}
+		assert.equal(peer.requests.length, 0);
+		if (requests === 2 || requests === 3)
+			return [
+				call(mcpTool(request, "selected-service"), `selected-${requests}`),
+			];
+		return [answer];
+	}, false);
+	try {
+		await f.settings([
+			f.service("selected-service"),
+			{
+				...f.service("unselected-http"),
+				config: JSON.stringify({ url: peer.url }),
+				env: [],
+			},
+		]);
+		assert.equal(
+			(await waitForAgent(f.base, await f.start())).status,
+			"succeeded",
+		);
+		const logs = await f.logs();
+		assert.equal(logs.filter((row) => row.event === "start").length, 1);
+		assert.equal(logs.filter((row) => row.event === "tools/call").length, 2);
+		assert.equal(peer.requests.length, 0);
+		assert.equal(requests, 4);
+	} finally {
+		await f.close();
+		await peer.close();
+	}
+});
 
 test("supported Jira startup prepares an existing stopped Colima profile before discovery", async () => {
 	let requests = 0;
@@ -446,10 +555,10 @@ test("same-Agent Jira recovery performs compound preparation under one ordinary 
 						"SELECT request_body FROM model_calls WHERE agent_id=? AND url LIKE '%/decisions'",
 					)
 					.all(id);
-				assert.equal(reviews.length, reviewed ? 3 : 0);
+				assert.equal(reviews.length, reviewed ? 4 : 0);
 				if (reviewed)
 					assert.match(
-						String(reviews[1].request_body),
+						String(reviews[2].request_body),
 						/existing stopped Colima profile/,
 					);
 			} finally {
@@ -935,7 +1044,9 @@ test("real stdio discovery paginates, maps collisions, preserves schemas and ord
 		assert.equal(requests.length, 2);
 		const db = new DatabaseSync(f.path);
 		const records = db
-			.prepare("SELECT call_id,result,status FROM tool_calls ORDER BY id")
+			.prepare(
+				"SELECT call_id,result,status FROM tool_calls WHERE call_id NOT LIKE 'fixture-start-%' ORDER BY id",
+			)
 			.all();
 		db.close();
 		assert.equal(records.length, 3);
@@ -1046,7 +1157,7 @@ for (const change of ["disable", "delete"] as const) {
 			const db = new DatabaseSync(f.path);
 			const records = db
 				.prepare(
-					"SELECT t.result,t.status FROM tool_calls t JOIN model_calls m ON m.id=t.model_call_id WHERE m.agent_id=? ORDER BY t.id",
+					"SELECT t.result,t.status FROM tool_calls t JOIN model_calls m ON m.id=t.model_call_id WHERE m.agent_id=? AND t.call_id NOT LIKE 'fixture-start-%' ORDER BY t.id",
 				)
 				.all(id);
 			db.close();
@@ -1258,7 +1369,9 @@ test("MCP JSON placeholders expand once after parsing and preserve stored creden
 		const tool = mcpTool(request, label);
 		if (requests === 1) return [call(tool, "substituted")];
 		const output = request.input.find(
-			(part) => part.type === "function_call_output",
+			(part) =>
+				part.type === "function_call_output" &&
+				!part.call_id?.startsWith("fixture-start-"),
 		)?.output;
 		assert(Array.isArray(output));
 		assert.equal(
@@ -1287,7 +1400,11 @@ test("MCP JSON placeholders expand once after parsing and preserve stored creden
 		const logs = await f.logs();
 		assert.equal(logs.find((entry) => entry.event === "start")?.label, label);
 		const db = new DatabaseSync(f.path);
-		const record = db.prepare("SELECT result FROM tool_calls").get();
+		const record = db
+			.prepare(
+				"SELECT result FROM tool_calls WHERE call_id NOT LIKE 'fixture-start-%'",
+			)
+			.get();
 		assert(!String(record?.result).includes(secret));
 		assert.match(String(record?.result), /REDACTED/);
 		assert.deepEqual(
@@ -1383,7 +1500,9 @@ test("credential redaction keeps JSON booleans, schemas and image bytes valid", 
 				},
 			];
 		const output = request.input.find(
-			(part) => part.type === "function_call_output",
+			(part) =>
+				part.type === "function_call_output" &&
+				!part.call_id?.startsWith("fixture-start-"),
 		)?.output;
 		assert(Array.isArray(output));
 		expectedImage = output.find((part) => part.type === "input_image");
@@ -1438,18 +1557,18 @@ test("credential redaction keeps JSON booleans, schemas and image bytes valid", 
 				"SELECT url,request_body,response_body FROM model_calls WHERE agent_id=? ORDER BY id",
 			)
 			.all(id);
-		assert.equal(modelCalls.length, 3);
+		assert.equal(modelCalls.length, 5);
 		const responseCalls = modelCalls.filter((call) =>
 			String(call.url).endsWith("/responses"),
 		);
-		assert.equal(responseCalls.length, 2);
+		assert.equal(responseCalls.length, 3);
 		const reviewCall = modelCalls.find((call) =>
 			String(call.url).endsWith("/decisions"),
 		);
 		assert(reviewCall);
 		assert.doesNotThrow(() => JSON.parse(String(reviewCall.request_body)));
 		assert.doesNotThrow(() => JSON.parse(String(reviewCall.response_body)));
-		for (const modelCall of responseCalls) {
+		for (const modelCall of responseCalls.slice(1)) {
 			const request = JSON.parse(String(modelCall.request_body));
 			assert.equal(
 				mcpTool(request, "redaction").parameters.additionalProperties,
@@ -1457,7 +1576,7 @@ test("credential redaction keeps JSON booleans, schemas and image bytes valid", 
 			);
 			assert.doesNotThrow(() => JSON.parse(String(modelCall.response_body)));
 		}
-		const finalResponse = JSON.parse(String(responseCalls[1].response_body));
+		const finalResponse = JSON.parse(String(responseCalls[2].response_body));
 		assert.equal(finalResponse.output[0].content[0].text, "MCP complete");
 		const toolCall = db
 			.prepare(
@@ -1474,9 +1593,11 @@ test("credential redaction keeps JSON booleans, schemas and image bytes valid", 
 			savedArguments.payload.pixelText,
 			"data:[REDACTED]/png;base64,[REDACTED]",
 		);
-		const savedInput = JSON.parse(String(responseCalls[1].request_body)).input;
+		const savedInput = JSON.parse(String(responseCalls[2].request_body)).input;
 		const savedOutput = savedInput.find(
-			(part: { type?: string }) => part.type === "function_call_output",
+			(part: { type?: string; call_id?: string }) =>
+				part.type === "function_call_output" &&
+				!part.call_id?.startsWith("fixture-start-"),
 		).output;
 		assert.deepEqual(
 			savedOutput.find((part: { type: string }) => part.type === "input_image"),
@@ -1547,7 +1668,9 @@ test("stderr preserves split UTF8 and withholds incomplete credentials from diag
 		}
 		if (requests === 2) {
 			const output = request.input.find(
-				(item) => item.type === "function_call_output",
+				(item) =>
+					item.type === "function_call_output" &&
+					!item.call_id?.startsWith("fixture-start-"),
 			);
 			assert(output);
 			assert.equal(
@@ -1678,7 +1801,9 @@ for (const auth of ["none", "auth", "key"]) {
 			if (auth === "auth") assert.equal(calls[0].headers["x-static"], "plain");
 			const db = new DatabaseSync(f.path);
 			const records = db
-				.prepare("SELECT status,result FROM tool_calls ORDER BY id")
+				.prepare(
+					"SELECT status,result FROM tool_calls WHERE call_id NOT LIKE 'fixture-start-%' ORDER BY id",
+				)
 				.all();
 			db.close();
 			assert.deepEqual(
@@ -1864,7 +1989,9 @@ for (const change of ["disable", "delete"]) {
 			assert.equal(after.requests.length, 0);
 			const db = new DatabaseSync(f.path);
 			const results = db
-				.prepare("SELECT status,result FROM tool_calls ORDER BY id")
+				.prepare(
+					"SELECT status,result FROM tool_calls WHERE call_id NOT LIKE 'fixture-start-%' ORDER BY id",
+				)
 				.all();
 			db.close();
 			assert.equal(results[0].status, "succeeded");
@@ -2477,10 +2604,14 @@ test("active HTTP MCP preserves auth and applies explicit classification to save
 		const { toolCalls } = await (
 			await fetch(`${f.base}/api/agents/${id}/tools`)
 		).json();
-		assert.doesNotMatch(toolCalls[0].arguments, /credential/);
-		assert.match(toolCalls[0].arguments, /jira literal-header literal-query/);
+		const business = toolCalls.find(
+			(call: { callId: string; name: string }) => call.name !== "mcp_startup",
+		);
+		assert(business);
+		assert.doesNotMatch(business.arguments, /credential/);
+		assert.match(business.arguments, /jira literal-header literal-query/);
 		const detail = await (
-			await fetch(`${f.base}/api/agents/${id}/tools?toolId=${toolCalls[0].id}`)
+			await fetch(`${f.base}/api/agents/${id}/tools?toolId=${business.id}`)
 		).json();
 		assert.doesNotMatch(detail.toolCalls[0].result, /credential/);
 		assert.match(

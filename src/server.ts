@@ -935,7 +935,7 @@ export function createServer(
 			);
 		try {
 			mcp = await connectMcp(
-				readAgentMcpServices(),
+				[],
 				readAgentMcpServices,
 				state.controller.signal,
 				(connections) => {
@@ -1098,7 +1098,11 @@ export function createServer(
 					return {
 						...next,
 						scratch,
-						instructions: `${instructions}\n\n${skillsContext}\nChat personal browser target: ${JSON.stringify(browserTarget(id))}. Use browser_connect to establish or explicitly change the tracked personal target; never replace it because login or connection failed. Temporary browsing uses ordinary CLI sessions and does not change this target. A saved target is not proof of a live connection or website login. Existing connections keep their actual target; reconnect explicitly after a change.\nMCP connections for this Agent: ${safeMcpConnections(mcp?.connections ?? [])}. Enabled MCP services use their configured accounts and environment. All tool calls follow the global safety review setting. Use mcp_diagnostics to inspect current Settings and this Agent's runtime failures instead of searching application storage or exporting settings. Use mcp_startup with a stable service_id to initialize or explicitly replace this Agent's service using latest saved Settings, then choose each business call explicitly; no prior operation is replayed. Do not directly read, query, copy, or modify Weft's operational database at ${JSON.stringify(path)}. Ordinary project and isolated test databases remain usable. Configuration editing, enabling services and credential entry remain user actions in Settings. Obtain user confirmation before disruptive restarts, software installation, or system configuration changes; decide when and how to ask from the actual situation. Resource links are not already-read resources. MCP failures are facts; choose subsequent action without assuming an operation can safely be replayed.`,
+						instructions: `${instructions}\n\n${skillsContext}\nChat personal browser target: ${JSON.stringify(browserTarget(id))}. Use browser_connect to establish or explicitly change the tracked personal target; never replace it because login or connection failed. Temporary browsing uses ordinary CLI sessions and does not change this target. A saved target is not proof of a live connection or website login. Existing connections keep their actual target; reconnect explicitly after a change.\nEnabled MCP service catalog: ${JSON.stringify(
+							readAgentMcpServices()
+								.filter((service) => service.enabled)
+								.map(({ id, name }) => ({ id, name: redactTool(name) })),
+						)}. This catalog is availability metadata only: no service is connected or its tools discovered merely because it is enabled. Choose relevant services with mcp_startup; complete discovery exposes all selected service tools on the next model request. Other services stay unstarted. Each new Root Agent and Sub-agent selects independently; previous messages and other Agents do not restore connections or callable tools. MCP connections for this Agent: ${safeMcpConnections(mcp?.connections ?? [])}. Enabled MCP services use their configured accounts and environment. All tool calls follow the global safety review setting. Use mcp_diagnostics to inspect current Settings and this Agent's runtime failures instead of searching application storage or exporting settings. Use mcp_startup with a stable service_id to initialize or explicitly replace this Agent's service using latest saved Settings, then choose each business call explicitly; no prior operation is replayed. Do not directly read, query, copy, or modify Weft's operational database at ${JSON.stringify(path)}. Ordinary project and isolated test databases remain usable. Configuration editing, enabling services and credential entry remain user actions in Settings. Obtain user confirmation before disruptive restarts, software installation, or system configuration changes; decide when and how to ask from the actual situation. Resource links are not already-read resources. MCP failures are facts; choose subsequent action without assuming an operation can safely be replayed.`,
 						additionalTools: [
 							mcpDiagnosticsTool,
 							mcpStartupTool,

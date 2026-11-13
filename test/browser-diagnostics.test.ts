@@ -74,6 +74,7 @@ const server = createServer((req, res) => {
 	);
 	const maxReadinessPolls = 5;
 	let readinessPolls = 0;
+	let mcpStarted = false;
 	let websiteOutput = "";
 	let step = 0,
 		session = 0,
@@ -88,6 +89,29 @@ const server = createServer((req, res) => {
 			const requestBody = String(init?.body);
 			recordings.push(requestBody);
 			const body = JSON.parse(requestBody);
+			if (!mcpStarted) {
+				assert.match(body.instructions, /PROJECT-BROWSER-INTEGRATION/);
+				assert.match(body.instructions, /EXPLICIT-BROWSER-INTEGRATION/);
+				assert.match(body.instructions, /playwright-cli/);
+				assert.deepEqual(body.input.at(-1).content.at(-1), userImage);
+				assert(
+					!body.tools.some((tool: { description?: string }) =>
+						tool.description?.includes("controlled HTTP tool"),
+					),
+				);
+				assert.equal(mcp.requests.length, 0);
+				mcpStarted = true;
+				return completedResponse({
+					output: [
+						{
+							type: "function_call",
+							name: "mcp_startup",
+							call_id: "browser-mcp-startup",
+							arguments: JSON.stringify({ service_id: "browser-integration" }),
+						},
+					],
+				});
+			}
 			const last = body.input
 				.filter(
 					(item: { type?: string }) => item.type === "function_call_output",
@@ -126,7 +150,6 @@ const server = createServer((req, res) => {
 					assert.match(body.instructions, /PROJECT-BROWSER-INTEGRATION/);
 					assert.match(body.instructions, /EXPLICIT-BROWSER-INTEGRATION/);
 					assert.match(body.instructions, /playwright-cli/);
-					assert.deepEqual(body.input.at(-1).content.at(-1), userImage);
 					assert(
 						body.tools.some((tool: { description?: string }) =>
 							tool.description?.includes("controlled HTTP tool"),
@@ -304,7 +327,7 @@ const server = createServer((req, res) => {
 	try {
 		await request(
 			"/api/execution-limits",
-			{ modelCallLimit: 19 + 18 + 2 * maxReadinessPolls },
+			{ modelCallLimit: 19 + 18 + 2 + 2 * maxReadinessPolls },
 			"PATCH",
 		);
 		await request(
@@ -344,13 +367,15 @@ const server = createServer((req, res) => {
 		assert.equal(mcp.streams.size, 0);
 		assert.equal(screenshots.length, 1);
 		const tools = (await request(`/api/agents/${agentId}/tools`)).toolCalls;
-		assert.equal(tools.length, 18);
+		assert.equal(tools.length, 19);
 		const image = tools.find(
 			(tool: { name: string }) => tool.name === "read_image",
 		);
 		assert.deepEqual(JSON.parse(image.result), screenshots[0]);
 		const detail = (
-			await request(`/api/agents/${agentId}/tools?toolId=${tools[0].id}`)
+			await request(
+				`/api/agents/${agentId}/tools?toolId=${tools.find((tool: { name: string }) => tool.name === "exec_command").id}`,
+			)
 		).toolCalls[0];
 		assert.match(
 			detail.output.map((chunk: { text: string }) => chunk.text).join(""),

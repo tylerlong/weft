@@ -135,7 +135,9 @@ for (const change of ["disable", "edit"] as const) {
 		};
 		const f = await fixture(
 			(request) => {
-				if (++round > 1) return [answer];
+				if (++round === 1)
+					return [call("mcp_startup", { service_id: service.id })];
+				if (round > 2) return [answer];
 				const tool = request.tools.find((tool) =>
 					tool.description?.includes("controlled HTTP tool"),
 				);
@@ -143,6 +145,7 @@ for (const change of ["disable", "edit"] as const) {
 				return [call(tool.name, args)];
 			},
 			async () => {
+				if (f.reviews.at(-1)?.name === "mcp_startup") return;
 				assert.equal(
 					original.requests.filter((request) => request.method === "tools/call")
 						.length,
@@ -168,9 +171,9 @@ for (const change of ["disable", "edit"] as const) {
 			await f.send("/api/mcp-settings", { services: [service] }, "PUT");
 			const agent = await f.run();
 			assert.equal(agent.status, "succeeded");
-			assert.equal(f.reviews.length, 1);
-			assert.deepEqual(f.reviews[0].execution, { service: service.name });
-			assert.deepEqual(f.reviews[0].arguments, args);
+			assert.equal(f.reviews.length, 2);
+			assert.deepEqual(f.reviews[1].execution, { service: service.name });
+			assert.deepEqual(f.reviews[1].arguments, args);
 			assert.equal(
 				replacement.requests.length,
 				0,
@@ -189,7 +192,7 @@ for (const change of ["disable", "edit"] as const) {
 			try {
 				const review = db
 					.prepare(
-						"SELECT status,response_body FROM model_calls WHERE url LIKE '%/decisions'",
+						"SELECT status,response_body FROM model_calls WHERE url LIKE '%/decisions' ORDER BY id DESC LIMIT 1",
 					)
 					.get();
 				assert.equal(review?.status, "succeeded");
@@ -197,7 +200,11 @@ for (const change of ["disable", "edit"] as const) {
 					JSON.parse(String(review?.response_body)).answers.safety.choice,
 					"allow",
 				);
-				const tool = db.prepare("SELECT status,result FROM tool_calls").get();
+				const tool = db
+					.prepare(
+						"SELECT status,result FROM tool_calls WHERE name != 'mcp_startup'",
+					)
+					.get();
 				assert.equal(
 					tool?.status,
 					change === "disable" ? "failed" : "succeeded",
@@ -452,7 +459,9 @@ for (const transport of ["stdio", "http"] as const) {
 		};
 		const f = await fixture(
 			(request) => {
-				if (++round > 1) return [answer];
+				if (++round === 1)
+					return [call("mcp_startup", { service_id: transport })];
+				if (round > 2) return [answer];
 				const tool = request.tools.find(
 					(tool) =>
 						tool.description?.includes("controlled MCP tool") ||
@@ -463,6 +472,7 @@ for (const transport of ["stdio", "http"] as const) {
 				return [call(tool.name, args)];
 			},
 			async () => {
+				if (f.reviews.at(-1)?.name === "mcp_startup") return;
 				if (peer)
 					assert.equal(
 						peer.requests.filter((request) => request.method === "tools/call")
@@ -510,16 +520,16 @@ for (const transport of ["stdio", "http"] as const) {
 			assert.equal(agent.status, "succeeded");
 			assert.equal(
 				f.reviews.length,
-				1,
-				"MCP initialization/discovery/cleanup are not reviewed tool calls",
+				2,
+				"Explicit startup and the business call each receive one review",
 			);
-			assert.equal(f.reviews[0].name, "read_file");
-			assert.deepEqual(f.reviews[0].arguments, args);
-			assert.deepEqual(f.reviews[0].execution, {
+			assert.equal(f.reviews[1].name, "read_file");
+			assert.deepEqual(f.reviews[1].arguments, args);
+			assert.deepEqual(f.reviews[1].execution, {
 				service: `real ${transport} service`,
 			});
 			assert.match(
-				f.reviews[0].description,
+				f.reviews[1].description,
 				new RegExp(`real ${transport} service`),
 			);
 			const requests =
@@ -578,8 +588,8 @@ for (const action of [
 			async () => {
 				assert.equal(
 					peer.requests.filter((row) => row.method === "initialize").length,
-					1,
-					"replacement must wait for review",
+					0,
+					"startup must wait for review",
 				);
 				if (action === "disable-during-review")
 					await f.send(
@@ -616,7 +626,7 @@ for (const action of [
 							service: { runtime: { status: string } };
 						}
 					).service.runtime.status,
-					"connected",
+					"not_started",
 				);
 				assert.match(JSON.stringify(f.reviews[0].execution), /Authorization/);
 				assert.match(JSON.stringify(f.reviews[0].execution), /TOKEN/);
@@ -626,7 +636,7 @@ for (const action of [
 			}
 			assert.equal(
 				peer.requests.filter((row) => row.method === "initialize").length,
-				action === "allow" || action === "disabled" ? 2 : 1,
+				action === "allow" || action === "disabled" ? 1 : 0,
 			);
 			assert.equal(
 				peer.requests.filter((row) => row.method === "tools/call").length,
@@ -677,9 +687,9 @@ for (const change of ["selected", "unrelated"] as const) {
 		const f = await fixture(
 			(request) => {
 				round++;
-				if (round === 1)
+				if (round <= 2)
 					return [call("mcp_startup", { service_id: service.id })];
-				if (round === 2) {
+				if (round === 3) {
 					if (change === "selected")
 						assert.match(
 							JSON.stringify(request.input),
@@ -701,7 +711,7 @@ for (const change of ["selected", "unrelated"] as const) {
 				return [answer];
 			},
 			async () => {
-				if (f.reviews.length !== 1) return;
+				if (f.reviews.length !== 2) return;
 				await f.send(
 					"/api/mcp-settings",
 					{

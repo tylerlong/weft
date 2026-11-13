@@ -645,6 +645,23 @@ test("Settings URL and masked token save through to an actual HTTP model tool ca
 		await dialog.getByRole("button", { name: "Close", exact: true }).click();
 		await expect(dialog).not.toBeVisible();
 		expect(peer.requests).toEqual([]);
+		const services = (
+			await (await page.request.get(`${app.url}/api/mcp-settings`)).json()
+		).services;
+		const startup = app.rawStreamModel();
+		startup.push(
+			completedBody({
+				output: [
+					{
+						type: "function_call",
+						name: "mcp_startup",
+						call_id: "http-ui-startup",
+						arguments: JSON.stringify({ service_id: services[0].id }),
+					},
+				],
+			}),
+		);
+		startup.end();
 		const model = app.rawStreamModel();
 		model.push(
 			completedBody({
@@ -682,7 +699,10 @@ test("Settings URL and masked token save through to an actual HTTP model tool ca
 				`${app.url}/api/agents/${history.agents[0].id}/calls?kind=request`,
 			)
 		).json();
-		expect(calls.calls).toHaveLength(3);
+		expect(calls.calls).toHaveLength(5);
+		expect(calls.calls[3].url).toBe(
+			"https://openrouter.ai/api/alpha/decisions",
+		);
 		expect(calls.calls[1].url).toBe(
 			"https://openrouter.ai/api/alpha/decisions",
 		);
