@@ -1,5 +1,7 @@
 # 通过官方客户端接入 MCP
 
+按需连接的后续设计讨论见 [ADR 0013](0013-model-directed-mcp-activation.md)；该设计尚未实施，下述自动初始化仍是当前运行行为。
+
 采用 [官方 TypeScript MCP 客户端 SDK](https://github.com/modelcontextprotocol/typescript-sdk)（`@modelcontextprotocol/client`），复用协议与连接实现，避免自写 MCP 协议或为此引入完整 Agent 框架。保留 Weft 自己的模型 HTTP、Agent 生命周期与实际工具记录，模型选择调用，本地适配并执行。
 
 当前已实现命令型 stdio 与 URL 型 Streamable HTTP。第一版规格包含两者；HTTP 认证支持固定 token／API key 或无需认证，凭据沿用统一 Settings 保存方式，浏览器 OAuth 登录延期。stdio 由 Weft 启动进程，HTTP 连接用户指定的服务 URL，本机 HTTP 服务也属于 URL 型。
