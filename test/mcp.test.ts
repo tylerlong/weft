@@ -2473,7 +2473,7 @@ test("active HTTP MCP preserves auth and applies explicit classification to save
 		assert.equal(sent.headers.authorization, "Bearer credential");
 		assert.equal(sent.headers["x-public"], "jira");
 		assert.equal(sent.headers["x-literal"], "literal-header");
-		assert.deepEqual(sent.params?.arguments.payload, { text });
+		assert.deepEqual(sent.params?.arguments?.payload, { text });
 		const { toolCalls } = await (
 			await fetch(`${f.base}/api/agents/${id}/tools`)
 		).json();
