@@ -16,6 +16,8 @@
 
 接入第三方工具时，优先保留上游公开接口的参数、结果与能力，只做协议兼容、参数校验、归属和记录所需的接线；不得为简化封装而静默删减能力或改变语义。具体差异须说明原因并对照固定版本验证。
 
+[ADR 0013](docs/adr/0013-model-directed-mcp-activation.md) 已接受 MCP 按需连接设计，实施规格见 [#222](https://github.com/tylerlong/weft/issues/222)，尚未实施：Agent 先获得已启用服务的轻量目录，由模型选择后建立独立连接并获得该服务的全部工具。此次保留每个 Agent 的连接归属，增加服务可选说明，不引入按 Chat 手动选择、跨 Agent 共享连接或单工具检索。现有实现仍在 Agent 开始时初始化所有已启用服务。
+
 ## Language
 
 服务方路由偏好见 [GLOSSARY.md](GLOSSARY.md#language)。

@@ -1,6 +1,6 @@
 # 通过官方客户端接入 MCP
 
-按需连接的后续设计讨论见 [ADR 0013](0013-model-directed-mcp-activation.md)；该设计尚未实施，下述自动初始化仍是当前运行行为。
+[ADR 0013](0013-model-directed-mcp-activation.md) 已接受由模型按需建立连接的设计，取代本文的自动初始化及初始全量工具目录规则，并保留独立 Agent 归属及其他约束。该设计尚未实施；下文的自动初始化及相关交付记录仍描述现有实现与历史证据。
 
 采用 [官方 TypeScript MCP 客户端 SDK](https://github.com/modelcontextprotocol/typescript-sdk)（`@modelcontextprotocol/client`），复用协议与连接实现，避免自写 MCP 协议或为此引入完整 Agent 框架。保留 Weft 自己的模型 HTTP、Agent 生命周期与实际工具记录，模型选择调用，本地适配并执行。
 
