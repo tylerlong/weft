@@ -22,9 +22,9 @@
 | `create_sub_agent` | Weft 自己的 Agent 执行核心；支持明确背景、模型和 reasoning 覆盖，立即返回身份，终态主动通知父任务。                                                 | 不是 Codex spawn-agent 工具的包装。上下文不自动继承、通知和等待规则是 ADR 0002 已确定的产品行为，不是第三方参数被删。没有依据为“直接 expose”而更换调度框架。                                                                                                             |
 | `cancel_sub_agent` | Weft 自己的取消逻辑；父模型可取消直接子树，等待清理并返回实际结果。                                                                                 | 不是上游工具包装。保留归属校验、部分结果和真实取消事实。                                                                                                                                                                                                                 |
 
-`mcp_startup({service_id})` 由 `src/mcp-client.ts` 定义，在当前 Agent 显式初始化或替换一个已启用服务，使用最新保存的 Settings。替换先关闭旧客户端并移除工具，成功完成全部发现后才发布下一次请求的目录；失败无旧凭据回退或业务重放。服务启动总时限覆盖前置准备、所属子进程、共享启动等待、Docker 就绪检查、初始化及全部发现，取消清理所属资源。Settings 编辑和凭据录入仍由用户完成。
+当前 Agent 按 [ADR 0013](adr/0013-model-directed-mcp-activation.md) 先获得已启用服务的 ID／名称／可选说明目录，不自动连接服务。`mcp_startup({service_id})` 由 `src/mcp-client.ts` 定义，在当前 Agent 显式初始化或替换一个已启用服务，使用最新保存的 Settings。替换先关闭旧客户端并移除工具，成功完成全部发现后才发布下一次请求的完整工具目录；失败无旧凭据回退或业务重放。服务启动总时限覆盖前置准备、所属子进程、共享启动等待、Docker 就绪检查、初始化及全部发现，取消清理所属资源。Settings 编辑和凭据录入仍由用户完成。
 
-已实现的 Jira Docker 准备复用同一自动／显式路径：按真实程序／镜像及受支持的模板参数形状识别，先用相同 Docker endpoint 执行 `docker info`。只有可明确映射到已有配置、唯一且停止的 Docker Colima profile 时才有界启动，并显式禁止激活 context、保存配置或改写 SSH 配置；运行但 daemon 不可达、未知配置或缺少依赖都返回事实，其他启动参数继续原协议路径。并发 Agent 不重复启动，取消终止所属准备进程，不停止已启动的共享 runtime，也不重放 Jira 操作。一次显式启动的 Jev 审核涵盖内部准备；自动初始化不是 Tool Call。详细识别边界及受控回归见 [MCP ADR 的 #216 实施记录](adr/0009-mcp-client-integration.md#216-已实现的-jira-docker-前置准备)；真实模型／Jira 验收仍由 #217 单独执行。
+已实现的 Jira Docker 准备在显式 `mcp_startup` 内执行：按真实程序／镜像及受支持的模板参数形状识别，先用相同 Docker endpoint 执行 `docker info`。只有可明确映射到已有配置、唯一且停止的 Docker Colima profile 时才有界启动，并显式禁止激活 context、保存配置或改写 SSH 配置；运行但 daemon 不可达、未知配置或缺少依赖都返回事实，其他启动参数继续原协议路径。并发 Agent 不重复启动，取消终止所属准备进程，不停止已启动的共享 runtime，也不重放 Jira 操作。显式启动作为 Tool Call 遵循全局 Jev 开关；开启时在执行前审核一次，涵盖内部准备，不对内部步骤追加审核。详细识别边界及历史受控回归见 [MCP ADR 的 #216 实施记录](adr/0009-mcp-client-integration.md#216-已实现的-jira-docker-前置准备)；#217 的真实模型／Jira 验收是历史证据，不证明当前按需连接已完成真实外部验收。
 
 工具注册见 `src/openrouter.ts`、`src/command-tools.ts` 和 `src/file-tools.ts`；命令、文件和子 Agent 分派见 `src/server.ts`。MCP 工具来自服务发现；浏览器只增加连接归属用 `browser_connect`，不另建页面动作 function tools。
 
@@ -135,10 +135,12 @@ Output、无 Cookie 请求不能通过及最终所属页面清理断言。模型
 回归使用临时数据库、受控 stdio／HTTP 配置和捕获的模型请求，验证禁用／失败／未启动区别、当前配置、凭据省略、stderr、可信数据库上下文及允许／阻止／故障／关闭审核路径。常规测试不会调用付费模型或修改真实 Jira；同一 Agent 恢复、前置条件准备及独立真实模型验收由 #215–#217 的交付记录说明。
 
 
-## MCP 启动、恢复与独立验收（#215–#217）
+## MCP 启动、恢复与独立验收历史（#215–#217）
+
+以下为 #215–#217 当时的交付与验收记录；其中自动初始化已被 [ADR 0013](adr/0013-model-directed-mcp-activation.md) 及 #223 的模型显式按需启动取代。当前启动与审核契约见上文，不把历史自动启动当作当前免审路径。
 
 `mcp_startup({service_id})` 使用当前已保存服务配置，只替换调用 Agent 的选定服务；完整发现后下一次模型请求得到新目录，失败没有旧凭据、部分目录或旧处理器回退，也不重放业务调用。保存本身不重连；审核期间改变该服务配置须重试，禁用／删除在执行前仍阻止操作。stdio 与 Streamable HTTP、原始上游 schema／结果及现有记录脱敏保持。
 
-自动与显式启动共用服务总时限，覆盖受支持的 Docker／Colima 前置进程、等待、就绪检查及 MCP 初始化／完整发现。支持的确定性动作及未知配置边界见 [ADR 0009](adr/0009-mcp-client-integration.md)。取消回收所属准备进程与客户端，不停止共享 Colima、不回滚已发生的外部效果。运行中的 VM 但 Docker 不可达仍返回失败；不创建 profile、切换 context、改配置、安装软件或自动重启运行中的基础设施。后续判断与必要的用户确认由模型处理。
+该次交付的自动与显式启动共用服务总时限，覆盖受支持的 Docker／Colima 前置进程、等待、就绪检查及 MCP 初始化／完整发现；当前显式启动继续保留该总时限。支持的确定性动作及未知配置边界见 [ADR 0009](adr/0009-mcp-client-integration.md)。取消回收所属准备进程与客户端，不停止共享 Colima、不回滚已发生的外部效果。运行中的 VM 但 Docker 不可达仍返回失败；不创建 profile、切换 context、改配置、安装软件或自动重启运行中的基础设施。后续判断与必要的用户确认由模型处理。
 
 付费真实模型＋只读 Jira 的[独立验收步骤](mcp-acceptance.md) 不接入 `pnpm test`、`pnpm test:e2e` 或 CI。确定性回归继续使用现有临时服务器、受控进程和模拟模型；不能据此推断真实 Jev 分类正确、Jira 身份验证成功或模型自主恢复质量。
