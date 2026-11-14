@@ -155,7 +155,7 @@
 	display: block;
 	max-width: 100%;
 	overflow-x: auto;
-	overscroll-behavior: contain;
+	overscroll-behavior-x: contain;
 }
 .markdown pre {
 	white-space: pre;
