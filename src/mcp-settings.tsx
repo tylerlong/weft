@@ -167,6 +167,24 @@ export function McpSettings({
 							onBlur={() => void commit()}
 						/>
 					</label>
+					<div>
+						<label htmlFor={`mcp-description-${row.id}`}>
+							{t("mcpDescription")}
+						</label>
+						<SettingsHelp label={t("mcpDescription")}>
+							{t("mcpDescriptionHelp")}
+						</SettingsHelp>
+						<input
+							id={`mcp-description-${row.id}`}
+							disabled={!ready}
+							className={input}
+							value={row.description ?? ""}
+							onChange={(event) =>
+								change(row.id, { description: event.target.value })
+							}
+							onBlur={() => void commit()}
+						/>
+					</div>
 					<label className="flex items-center gap-2">
 						<input
 							disabled={!ready}

@@ -16,7 +16,7 @@
 
 接入第三方工具时，优先保留上游公开接口的参数、结果与能力，只做协议兼容、参数校验、归属和记录所需的接线；不得为简化封装而静默删减能力或改变语义。具体差异须说明原因并对照固定版本验证。
 
-[ADR 0013](docs/adr/0013-model-directed-mcp-activation.md) 的按需连接已由 [#223](https://github.com/tylerlong/weft/issues/223) 实现，整体规格见 [#222](https://github.com/tylerlong/weft/issues/222)：Agent 先获得已启用服务的 ID／名称轻量目录，由模型选择后建立独立连接并获得该服务的全部工具。保留每个 Agent 的连接归属，不引入按 Chat 手动选择、跨 Agent 共享连接或单工具检索。服务可选说明仍由 #224 单独交付。
+[ADR 0013](docs/adr/0013-model-directed-mcp-activation.md) 的按需连接已由 [#223](https://github.com/tylerlong/weft/issues/223) 实现，整体规格见 [#222](https://github.com/tylerlong/weft/issues/222)：Agent 先获得已启用服务的 ID／名称／可选说明轻量目录，由模型选择后建立独立连接并获得该服务的全部工具。保留每个 Agent 的连接归属，不引入按 Chat 手动选择、跨 Agent 共享连接或单工具检索。服务可选说明的 Settings 编辑、持久化及目录接线已由 #224 实现，已有服务可留空。
 
 ## Language
 

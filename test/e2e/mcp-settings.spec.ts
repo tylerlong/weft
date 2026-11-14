@@ -4,6 +4,109 @@ import { completedBody } from "../model-fixture.ts";
 import { expect, test } from "./fixtures.ts";
 
 for (const chinese of [false, true]) {
+	test(`MCP descriptions preserve legacy settings and failed drafts (${chinese ? "zh" : "en"})`, async ({
+		page,
+		app,
+	}) => {
+		if (chinese)
+			await page.request.put(`${app.url}/api/language`, {
+				data: { language: "zh-CN" },
+			});
+		const row = jiraMcpService();
+		Reflect.deleteProperty(row, "description");
+		row.enabled = false;
+		row.env[1].value = "description-test-secret";
+		expect(
+			(
+				await page.request.put(`${app.url}/api/mcp-settings`, {
+					data: { services: [row] },
+				})
+			).ok(),
+		).toBeTruthy();
+		await page.goto(app.url);
+		await page
+			.getByRole("button", { name: chinese ? "设置" : "Settings", exact: true })
+			.click();
+		const dialog = page.getByRole("dialog", {
+			name: chinese ? "设置" : "Settings",
+			exact: true,
+		});
+		await dialog.getByRole("tab", { name: "MCP", exact: true }).click();
+		const panel = dialog.getByRole("tabpanel", { name: "MCP", exact: true });
+		const description = panel.getByRole("textbox", {
+			name: chinese ? "服务说明（可选）" : "Service description (optional)",
+			exact: true,
+		});
+		await expect(description).toHaveValue("");
+		await expect(description).toBeEnabled();
+		await description.fill("Engineering tickets <LITERAL>");
+		await description.blur();
+		await expect
+			.poll(
+				async () =>
+					(await (await page.request.get(`${app.url}/api/mcp-settings`)).json())
+						.services,
+			)
+			.toEqual([{ ...row, description: "Engineering tickets <LITERAL>" }]);
+		let fail = true;
+		await page.route("**/api/mcp-settings", async (route) => {
+			if (route.request().method() === "PUT" && fail)
+				return route.fulfill({
+					status: 500,
+					contentType: "application/json",
+					body: JSON.stringify({ error: "failed" }),
+				});
+			return route.continue();
+		});
+		await description.fill("Updated purpose");
+		await description.blur();
+		await expect(panel.getByRole("alert")).toContainText(
+			chinese ? "保存 MCP 配置失败" : "Unable to save MCP settings",
+		);
+		await dialog
+			.getByRole("button", { name: chinese ? "关闭" : "Close", exact: true })
+			.click();
+		await expect(dialog).toBeVisible();
+		await expect(description).toHaveValue("Updated purpose");
+		fail = false;
+		await dialog
+			.getByRole("button", { name: chinese ? "关闭" : "Close", exact: true })
+			.click();
+		await expect(dialog).not.toBeVisible();
+		expect(
+			(await (await page.request.get(`${app.url}/api/mcp-settings`)).json())
+				.services,
+		).toEqual([{ ...row, description: "Updated purpose" }]);
+		await page.reload();
+		await page
+			.getByRole("button", { name: chinese ? "设置" : "Settings", exact: true })
+			.click();
+		await dialog.getByRole("tab", { name: "MCP", exact: true }).click();
+		await expect(description).toHaveValue("Updated purpose");
+		await description.fill("");
+		await description.blur();
+		await expect
+			.poll(
+				async () =>
+					(await (await page.request.get(`${app.url}/api/mcp-settings`)).json())
+						.services,
+			)
+			.toEqual([{ ...row, description: "" }]);
+		await panel
+			.getByRole("button", {
+				name: chinese ? "移除服务" : "Remove service",
+				exact: true,
+			})
+			.click();
+		await panel
+			.getByRole("button", {
+				name: chinese ? "添加 Jira 模板" : "Add Jira template",
+				exact: true,
+			})
+			.click();
+		await expect(description).toHaveValue(/Jira/);
+	});
+
 	test(`MCP configuration retains invalid and failed drafts and Close retries (${chinese ? "zh" : "en"})`, async ({
 		page,
 		app,

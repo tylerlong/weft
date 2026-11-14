@@ -663,6 +663,7 @@ for (const chinese of [false, true]) {
 						["MCP", "Agent"],
 						["添加 Jira 模板", "JIRA_PERSONAL_TOKEN"],
 						["连接 JSON", "startup_timeout_sec"],
+						["服务说明（可选）", "帮助模型选择"],
 					],
 				]
 			: [
@@ -694,6 +695,7 @@ for (const chinese of [false, true]) {
 						["MCP", "Agent"],
 						["Add Jira template", "JIRA_PERSONAL_TOKEN"],
 						["Connection JSON", "startup_timeout_sec"],
+						["Service description (optional)", "so the model can choose it"],
 					],
 				];
 		for (const [index, tab] of tabs.entries()) {

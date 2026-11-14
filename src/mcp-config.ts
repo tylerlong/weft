@@ -1,6 +1,7 @@
 export type McpService = {
 	id: string;
 	name: string;
+	description?: string;
 	enabled: boolean;
 	config: string;
 	env: { name: string; value: string; secret?: boolean }[];
@@ -102,13 +103,17 @@ export function validateMcpServices(value: unknown): McpService[] {
 			!row ||
 			typeof row !== "object" ||
 			Object.keys(row).some(
-				(key) => !["id", "name", "enabled", "config", "env"].includes(key),
+				(key) =>
+					!["id", "name", "description", "enabled", "config", "env"].includes(
+						key,
+					),
 			) ||
 			typeof row.id !== "string" ||
 			!row.id ||
 			ids.has(row.id) ||
 			typeof row.name !== "string" ||
 			!row.name.trim() ||
+			(row.description !== undefined && typeof row.description !== "string") ||
 			typeof row.enabled !== "boolean" ||
 			typeof row.config !== "string" ||
 			!Array.isArray(row.env)
@@ -139,6 +144,7 @@ export function validateMcpServices(value: unknown): McpService[] {
 export const jiraMcpService = (): McpService => ({
 	id: crypto.randomUUID(),
 	name: "Jira",
+	description: "Search and manage Jira issues and projects.",
 	enabled: true,
 	config: JSON.stringify(
 		{

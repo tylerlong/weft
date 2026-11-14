@@ -295,6 +295,84 @@ test("unused enabled MCP services stay idle and expose only catalog metadata", a
 	}
 });
 
+test("service descriptions round trip and refresh idle catalogs without starting services", async () => {
+	const peer = await httpMcpFixture();
+	let requests = 0;
+	const description = 'Engineering tickets <UNSET> "work"';
+	const f = await fixture(async (request) => {
+		requests++;
+		const catalog = JSON.parse(
+			(request.instructions ?? "")
+				.split("Enabled MCP service catalog: ")[1]
+				.split(". This catalog")[0],
+		);
+		assert.deepEqual(catalog, [
+			{
+				id: "work",
+				name: "work",
+				description: requests === 1 ? description : "Updated purpose",
+			},
+			{ id: "legacy", name: "legacy", description: "" },
+		]);
+		assert.equal(peer.requests.length, 0);
+		assert.deepEqual(await f.logs(), []);
+		assert(!request.tools.some((tool) => tool.name.startsWith("mcp_tool_")));
+		if (requests === 1) {
+			const saved = (await (await fetch(`${f.base}/api/mcp-settings`)).json())
+				.services;
+			saved[0].description = "Updated purpose";
+			await f.settings(saved);
+			return [
+				{
+					type: "function_call",
+					name: "mcp_diagnostics",
+					call_id: "idle-diagnostics",
+					arguments: "{}",
+				},
+			];
+		}
+		return [answer];
+	}, false);
+	try {
+		const work = { ...f.service("work"), description };
+		const legacy = {
+			...f.service("legacy"),
+			config: JSON.stringify({ url: peer.url }),
+		};
+		const disabled = {
+			...f.service("disabled"),
+			enabled: false,
+			description: "Hidden service",
+		};
+		await f.settings([work, legacy, disabled]);
+		assert.deepEqual(
+			(await (await fetch(`${f.base}/api/mcp-settings`)).json()).services,
+			[work, legacy, disabled],
+		);
+		for (const invalid of [null, 42, true, {}, []]) {
+			const result = await fetch(`${f.base}/api/mcp-settings`, {
+				method: "PUT",
+				body: JSON.stringify({ services: [{ ...work, description: invalid }] }),
+			});
+			assert.equal(result.status, 400);
+		}
+		assert.deepEqual(
+			(await (await fetch(`${f.base}/api/mcp-settings`)).json()).services,
+			[work, legacy, disabled],
+		);
+		assert.equal(
+			(await waitForAgent(f.base, await f.start())).status,
+			"succeeded",
+		);
+		assert.equal(requests, 2);
+		assert.deepEqual(peer.requests, []);
+		assert.deepEqual(await f.logs(), []);
+	} finally {
+		await f.close();
+		await peer.close();
+	}
+});
+
 test("model selects one service and reuses it while other enabled services stay idle", async () => {
 	let requests = 0;
 	const peer = await httpMcpFixture();
@@ -308,6 +386,17 @@ test("model selects one service and reuses it while other enabled services stay 
 			return [startupCall("selected-service")];
 		}
 		assert.equal(peer.requests.length, 0);
+		if (requests === 2) {
+			const saved = (await (await fetch(`${f.base}/api/mcp-settings`)).json())
+				.services;
+			saved[0].description = "Updated connected service purpose";
+			await f.settings(saved);
+		}
+		if (requests === 3)
+			assert.match(
+				request.instructions ?? "",
+				/Updated connected service purpose/,
+			);
 		if (requests === 2 || requests === 3)
 			return [
 				call(mcpTool(request, "selected-service"), `selected-${requests}`),

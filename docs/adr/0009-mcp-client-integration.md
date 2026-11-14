@@ -1,6 +1,6 @@
 # 通过官方客户端接入 MCP
 
-[ADR 0013](0013-model-directed-mcp-activation.md) 取代本文早期的自动初始化及初始全量工具目录规则，保留独立 Agent 归属及其他约束。#223 已实现按需连接和 ID／名称目录，服务可选说明仍待 #224；下文 #214–#217 的自动初始化交付及验收段落为历史记录。
+[ADR 0013](0013-model-directed-mcp-activation.md) 取代本文早期的自动初始化及初始全量工具目录规则，保留独立 Agent 归属及其他约束。#223–#224 已实现按需连接、ID／名称／可选说明目录及说明编辑；下文 #214–#217 的自动初始化交付及验收段落为历史记录。
 
 采用 [官方 TypeScript MCP 客户端 SDK](https://github.com/modelcontextprotocol/typescript-sdk)（`@modelcontextprotocol/client`），复用协议与连接实现，避免自写 MCP 协议或为此引入完整 Agent 框架。保留 Weft 自己的模型 HTTP、Agent 生命周期与实际工具记录，模型选择调用，本地适配并执行。
 
@@ -32,7 +32,7 @@ Jev 仅判断提交操作的危险性，不评价业务任务是否合理，也�
 
 第一版支持 Tools 的发现、调用及实际文本、图片、结构化结果与错误记录。Resources 浏览和读取、Prompts 模板入口及服务端请求模型调用等能力延期；工具返回的资源链接保留为链接，不冒充已读取内容，未支持内容明确说明。
 
-初始模型请求提供内置工具及已启用服务的 ID／名称目录，不启动服务或发现其工具；模型调用 `mcp_startup` 后，下一次请求全量提供该 Agent 已选择并完整发现、仍可用的服务工具名称、描述和参数 schema，不引入单工具检索或本地语义筛选。MCP 服务数量与模型可调用工具数量不同，一个服务可以提供多个工具；Skill 按 [ADR 0007](0007-skill-discovery-and-invocation.md) 作为工作指导加载，不为每个 Skill 注册 function tool。工具定义本身占用输入上下文，实际开销实施时测量。
+初始模型请求提供内置工具及已启用服务的 ID／名称／可选说明目录，不启动服务或发现其工具；模型调用 `mcp_startup` 后，下一次请求全量提供该 Agent 已选择并完整发现、仍可用的服务工具名称、描述和参数 schema，不引入单工具检索或本地语义筛选。MCP 服务数量与模型可调用工具数量不同，一个服务可以提供多个工具；Skill 按 [ADR 0007](0007-skill-discovery-and-invocation.md) 作为工作指导加载，不为每个 Skill 注册 function tool。工具定义本身占用输入上下文，实际开销实施时测量。
 
 后续若实测工具定义的上下文或输入成本明显，再优先评估 OpenRouter Tool Search 等现成的按需发现能力，不自写检索框架；这不改变第一版全量提供的范围。
 

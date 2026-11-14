@@ -242,6 +242,9 @@ export const resources = {
 			mcpStatus_error: "Connection error",
 			mcpDiagnostics: "Connection diagnostics",
 			mcpName: "Service name",
+			mcpDescription: "Service description (optional)",
+			mcpDescriptionHelp:
+				"Describe what this service is for so the model can choose it. Included in the service catalog without connecting; leave blank if the name is sufficient.",
 			mcpService: "Service {{number}}",
 			mcpEnabled: "Enabled",
 			mcpJson: "Connection JSON",
@@ -585,6 +588,9 @@ export const resources = {
 			mcpStatus_error: "连接错误",
 			mcpDiagnostics: "连接诊断",
 			mcpName: "服务名称",
+			mcpDescription: "服务说明（可选）",
+			mcpDescriptionHelp:
+				"描述此服务的用途，帮助模型选择。说明无需连接便加入服务目录；名称已足够清楚时可留空。",
 			mcpService: "服务 {{number}}",
 			mcpEnabled: "启用",
 			mcpJson: "连接 JSON",
